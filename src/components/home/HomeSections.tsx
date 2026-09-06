@@ -19,6 +19,7 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useFeaturedHouses, useLocations } from '../../lib/hooks'
+import { useLanguage } from '../../lib/i18n'
 import { cn } from '../../lib/utils'
 import HouseCard from '../HouseCard'
 import { HouseImage, Reveal, SectionHeading, Skeleton } from '../ui'
@@ -28,20 +29,21 @@ import { HouseImage, Reveal, SectionHeading, Skeleton } from '../ui'
 /* ------------------------------------------------------------------ */
 export function FeaturedHouses() {
   const { data, isLoading } = useFeaturedHouses()
+  const { t } = useLanguage()
   return (
     <section id="featured" className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <SectionHeading
-          eyebrow="Handpicked for you"
-          title="Featured Boarding Houses"
-          subtitle="Verified, top-rated homes loved by students and professionals across the island."
+          eyebrow={t('featured.eyebrow')}
+          title={t('featured.title')}
+          subtitle={t('featured.subtitle')}
         />
         <Reveal delay={0.1}>
           <Link
             to="/search"
             className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-navy-800 transition hover:border-brand-300 hover:text-brand-500"
           >
-            View all <ArrowRight size={15} />
+            {t('featured.viewAll')} <ArrowRight size={15} />
           </Link>
         </Reveal>
       </div>
@@ -59,14 +61,15 @@ export function FeaturedHouses() {
 /* ------------------------------------------------------------------ */
 export function Locations() {
   const { data } = useLocations()
+  const { t } = useLanguage()
   return (
     <section id="locations" className="bg-white py-20">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <SectionHeading
           center
-          eyebrow="Explore the island"
-          title="Popular Locations in Siquijor"
-          subtitle="From the sunset strip in San Juan to the heritage homes of Lazi — find a place that fits your rhythm."
+          eyebrow={t('locations.eyebrow')}
+          title={t('locations.title')}
+          subtitle={t('locations.subtitle')}
         />
         <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {data?.map((loc, i) => (
@@ -85,7 +88,7 @@ export function Locations() {
                   <div>
                     <h3 className="text-lg font-bold text-white">{loc.municipality}</h3>
                     <p className="text-xs text-navy-200">
-                      {loc.count} boarding house{loc.count > 1 ? 's' : ''} · {loc.barangays.slice(0, 2).join(', ')}
+                      {loc.count} {loc.count > 1 ? t('locations.housesPlural') : t('locations.houses')} · {loc.barangays.slice(0, 2).join(', ')}
                     </p>
                   </div>
                   <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur transition group-hover:bg-brand-500">
@@ -104,39 +107,40 @@ export function Locations() {
 /* ------------------------------------------------------------------ */
 /*  Categories                                                         */
 /* ------------------------------------------------------------------ */
-const CATEGORIES = [
-  { icon: BedDouble, label: 'Bedspace', desc: 'Budget-friendly shared rooms', color: 'bg-brand-50 text-brand-500' },
-  { icon: DoorOpen, label: 'Private Rooms', desc: 'Your own space & lock', color: 'bg-navy-50 text-navy-800' },
-  { icon: Snowflake, label: 'With Aircon', desc: 'Beat the Siquijor heat', color: 'bg-mint-50 text-mint-600' },
-  { icon: Venus, label: 'Female Only', desc: 'All-female dormitories', color: 'bg-pink-50 text-pink-500' },
-  { icon: School, label: 'Near School', desc: 'Walk to your campus', color: 'bg-amber-50 text-amber-soft' },
-  { icon: Wifi, label: 'Fast WiFi', desc: 'Built for online classes', color: 'bg-indigo-50 text-indigo-500' },
-  { icon: Car, label: 'With Parking', desc: 'Safe space for your ride', color: 'bg-emerald-50 text-emerald-600' },
-  { icon: CreditCard, label: 'Pay via GCash', desc: 'Digital receipts & records', color: 'bg-rose-50 text-rose-500' },
+const CATEGORY_DEFS = [
+  { icon: BedDouble, labelKey: 'categories.bedspace', descKey: 'categories.bedspaceDesc', query: 'Bedspace', color: 'bg-brand-50 text-brand-500' },
+  { icon: DoorOpen, labelKey: 'categories.private', descKey: 'categories.privateDesc', query: 'Private Rooms', color: 'bg-navy-50 text-navy-800' },
+  { icon: Snowflake, labelKey: 'categories.aircon', descKey: 'categories.airconDesc', query: 'With Aircon', color: 'bg-mint-50 text-mint-600' },
+  { icon: Venus, labelKey: 'categories.female', descKey: 'categories.femaleDesc', query: 'Female Only', color: 'bg-pink-50 text-pink-500' },
+  { icon: School, labelKey: 'categories.school', descKey: 'categories.schoolDesc', query: 'Near School', color: 'bg-amber-50 text-amber-soft' },
+  { icon: Wifi, labelKey: 'categories.wifi', descKey: 'categories.wifiDesc', query: 'Fast WiFi', color: 'bg-indigo-50 text-indigo-500' },
+  { icon: Car, labelKey: 'categories.parking', descKey: 'categories.parkingDesc', query: 'With Parking', color: 'bg-emerald-50 text-emerald-600' },
+  { icon: CreditCard, labelKey: 'categories.gcash', descKey: 'categories.gcashDesc', query: 'Pay via GCash', color: 'bg-rose-50 text-rose-500' },
 ]
 
 export function Categories() {
+  const { t } = useLanguage()
   return (
     <section id="categories" className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
       <SectionHeading
         center
-        eyebrow="Browse by need"
-        title="Find Your Kind of Stay"
-        subtitle="Filter the island's boarding houses by what matters most to you."
+        eyebrow={t('categories.eyebrow')}
+        title={t('categories.title')}
+        subtitle={t('categories.subtitle')}
       />
       <div className="mt-12 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {CATEGORIES.map((c, i) => (
-          <Reveal key={c.label} delay={i * 0.04}>
+        {CATEGORY_DEFS.map((c, i) => (
+          <Reveal key={c.query} delay={i * 0.04}>
             <Link
-              to={`/search?q=${encodeURIComponent(c.label)}`}
+              to={`/search?q=${encodeURIComponent(c.query)}`}
               className="group flex flex-col items-start gap-3 rounded-[18px] border border-slate-100 bg-white p-5 shadow-card transition-all duration-300 hover:-translate-y-1 hover:shadow-card-hover"
             >
               <span className={cn('flex h-11 w-11 items-center justify-center rounded-2xl transition-transform duration-300 group-hover:scale-110', c.color)}>
                 <c.icon size={20} />
               </span>
               <div>
-                <p className="text-sm font-bold text-navy-800">{c.label}</p>
-                <p className="mt-0.5 text-xs text-ink">{c.desc}</p>
+                <p className="text-sm font-bold text-navy-800">{t(c.labelKey)}</p>
+                <p className="mt-0.5 text-xs text-ink">{t(c.descKey)}</p>
               </div>
             </Link>
           </Reveal>
@@ -166,40 +170,41 @@ function Counter({ to, suffix = '' }: { to: number; suffix?: string }) {
   )
 }
 
-const STATS = [
-  { value: 40, suffix: '+', label: 'Boarding houses listed' },
-  { value: 500, suffix: '+', label: 'Happy boarders served' },
-  { value: 96, suffix: '%', label: 'On-time rent collections' },
-  { value: 6, suffix: '', label: 'Municipalities covered' },
+const STAT_DEFS = [
+  { value: 40, suffix: '+', labelKey: 'stats.listed' },
+  { value: 500, suffix: '+', labelKey: 'stats.served' },
+  { value: 96, suffix: '%', labelKey: 'stats.collections' },
+  { value: 6, suffix: '', labelKey: 'stats.municipalities' },
 ]
 
-const BENEFITS = [
-  { icon: Bot, title: 'AI-powered management', desc: 'Ask anything — "who hasn\'t paid?" — and get instant answers from your data.' },
-  { icon: LineChart, title: 'Real-time analytics', desc: 'Occupancy, revenue, and growth forecasts updated automatically every day.' },
-  { icon: Sparkles, title: 'Automated receipts & reminders', desc: 'GCash-ready digital receipts and smart due-date reminders for tenants.' },
-  { icon: HeartHandshake, title: 'Trusted & verified', desc: 'Verified landlords, real reviews, and transparent pricing — no surprises.' },
+const BENEFIT_DEFS = [
+  { icon: Bot, titleKey: 'stats.aiTitle', descKey: 'stats.aiDesc' },
+  { icon: LineChart, titleKey: 'stats.analyticsTitle', descKey: 'stats.analyticsDesc' },
+  { icon: Sparkles, titleKey: 'stats.receiptsTitle', descKey: 'stats.receiptsDesc' },
+  { icon: HeartHandshake, titleKey: 'stats.trustedTitle', descKey: 'stats.trustedDesc' },
 ]
 
 export function StatsBenefits() {
+  const { t } = useLanguage()
   return (
     <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
       <div className="grid items-center gap-12 lg:grid-cols-2">
         <div>
           <SectionHeading
-            eyebrow="Why BoardEase"
-            title="Everything Landlords Need to Run Their Boarding House"
-            subtitle="Stop juggling notebooks and spreadsheets. BoardEase turns your daily operations into a single, intelligent dashboard."
+            eyebrow={t('stats.eyebrow')}
+            title={t('stats.title')}
+            subtitle={t('stats.subtitle')}
           />
           <div className="mt-8 space-y-5">
-            {BENEFITS.map((b, i) => (
-              <Reveal key={b.title} delay={i * 0.06}>
+            {BENEFIT_DEFS.map((b, i) => (
+              <Reveal key={b.titleKey} delay={i * 0.06}>
                 <div className="flex gap-4 rounded-2xl border border-slate-100 bg-white p-4 shadow-card transition hover:shadow-card-hover">
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-navy-800 to-brand-500 text-white">
                     <b.icon size={20} />
                   </span>
                   <div>
-                    <p className="font-bold text-navy-800">{b.title}</p>
-                    <p className="mt-0.5 text-sm leading-relaxed text-ink">{b.desc}</p>
+                    <p className="font-bold text-navy-800">{t(b.titleKey)}</p>
+                    <p className="mt-0.5 text-sm leading-relaxed text-ink">{t(b.descKey)}</p>
                   </div>
                 </div>
               </Reveal>
@@ -226,7 +231,7 @@ export function StatsBenefits() {
             <p className="text-3xl font-extrabold text-navy-800">
               <Counter to={96} suffix="%" />
             </p>
-            <p className="text-xs font-medium text-ink">on-time collections</p>
+            <p className="text-xs font-medium text-ink">{t('stats.onTime')}</p>
             <div className="mt-3 h-2 w-44 overflow-hidden rounded-full bg-slate-100">
               <motion.div
                 initial={{ width: 0 }}
@@ -240,15 +245,14 @@ export function StatsBenefits() {
         </div>
       </div>
 
-      {/* Counters */}
       <div className="mt-24 grid gap-5 rounded-[24px] bg-gradient-to-r from-navy-900 to-navy-800 p-10 shadow-card-hover sm:grid-cols-2 lg:grid-cols-4">
-        {STATS.map((s, i) => (
-          <Reveal key={s.label} delay={i * 0.07}>
+        {STAT_DEFS.map((s, i) => (
+          <Reveal key={s.labelKey} delay={i * 0.07}>
             <div className="text-center">
               <p className="text-4xl font-extrabold text-white">
                 <Counter to={s.value} suffix={s.suffix} />
               </p>
-              <p className="mt-2 text-sm font-medium text-navy-200">{s.label}</p>
+              <p className="mt-2 text-sm font-medium text-navy-200">{t(s.labelKey)}</p>
             </div>
           </Reveal>
         ))}
@@ -285,14 +289,15 @@ const TESTIMONIALS = [
 ]
 
 export function Testimonials() {
+  const { t } = useLanguage()
   return (
     <section className="bg-white py-20">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <SectionHeading
           center
-          eyebrow="Loved across the island"
-          title="What Boarders & Landlords Say"
-          subtitle="Real stories from the students, professionals, and property owners who use BoardEase every day."
+          eyebrow={t('testimonials.eyebrow')}
+          title={t('testimonials.title')}
+          subtitle={t('testimonials.subtitle')}
         />
         <div className="mt-12 grid gap-6 lg:grid-cols-3">
           {TESTIMONIALS.map((t, i) => (
@@ -330,6 +335,7 @@ export function Testimonials() {
 /*  CTA                                                                */
 /* ------------------------------------------------------------------ */
 export function CTA() {
+  const { t } = useLanguage()
   return (
     <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
       <Reveal>
@@ -339,27 +345,26 @@ export function CTA() {
           <div className="hero-blob -bottom-16 left-10 h-64 w-64 bg-brand-500" />
           <div className="relative">
             <span className="glass-dark inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold text-mint-300">
-              <Sparkles size={14} /> Ready when you are
+              <Sparkles size={14} /> {t('cta.badge')}
             </span>
             <h2 className="mx-auto mt-5 max-w-2xl text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-              Find Your Home — or Start Managing Yours — Today
+              {t('cta.title')}
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed text-navy-100/85">
-              Join hundreds of boarders and landlords across Siquijor using BoardEase to find homes, collect rent, and
-              grow with confidence.
+              {t('cta.subtitle')}
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
               <Link
                 to="/search"
                 className="rounded-full bg-brand-500 px-7 py-3.5 text-sm font-semibold text-white shadow-[0_12px_32px_rgb(30_115_232/0.45)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-brand-400"
               >
-                Browse boarding houses
+                {t('cta.browse')}
               </Link>
               <Link
                 to="/login"
                 className="rounded-full border border-white/20 bg-white/5 px-7 py-3.5 text-sm font-semibold text-white backdrop-blur transition hover:border-white/40 hover:bg-white/10"
               >
-                Open landlord dashboard
+                {t('cta.dashboard')}
               </Link>
             </div>
           </div>

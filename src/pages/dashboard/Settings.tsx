@@ -1,5 +1,6 @@
 import { Check, Download, Languages, Save } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
+import { useLanguage, type LangCode } from '../../lib/i18n'
 import { cn } from '../../lib/utils'
 
 const TOGGLES = [
@@ -13,6 +14,7 @@ const TOGGLES = [
 
 export default function Settings() {
   const [saved, setSaved] = useState(false)
+  const { lang, setLang, t, languages } = useLanguage()
   const [prefs, setPrefs] = useState<Record<string, boolean>>({
     rentDue: true,
     late: true,
@@ -21,7 +23,6 @@ export default function Settings() {
     review: true,
     subscription: true,
   })
-  const [lang, setLang] = useState('en')
 
   const save = (e: FormEvent) => {
     e.preventDefault()
@@ -31,7 +32,6 @@ export default function Settings() {
 
   return (
     <form onSubmit={save} className="max-w-3xl space-y-5">
-      {/* Profile */}
       <div className="rounded-[18px] border border-slate-100 bg-white p-6 shadow-card">
         <h3 className="font-bold text-navy-800">Landlord profile</h3>
         <div className="mt-5 flex items-center gap-4">
@@ -66,46 +66,40 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Notifications */}
       <div className="rounded-[18px] border border-slate-100 bg-white p-6 shadow-card">
         <h3 className="font-bold text-navy-800">Notification preferences</h3>
         <p className="mt-0.5 text-xs text-mut">Choose which alerts you want to receive by email & in-app.</p>
         <div className="mt-5 space-y-3">
-          {TOGGLES.map((t) => (
-            <label key={t.key} className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-slate-100 p-4 transition hover:border-slate-200">
+          {TOGGLES.map((toggle) => (
+            <label key={toggle.key} className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-slate-100 p-4 transition hover:border-slate-200">
               <div>
-                <p className="text-sm font-semibold text-navy-800">{t.label}</p>
-                <p className="text-xs text-ink">{t.desc}</p>
+                <p className="text-sm font-semibold text-navy-800">{toggle.label}</p>
+                <p className="text-xs text-ink">{toggle.desc}</p>
               </div>
               <button
                 type="button"
-                onClick={() => setPrefs((p) => ({ ...p, [t.key]: !p[t.key] }))}
-                className={cn('relative h-6 w-11 shrink-0 rounded-full transition', prefs[t.key] ? 'bg-mint-400' : 'bg-slate-200')}
-                aria-label={t.label}
+                onClick={() => setPrefs((p) => ({ ...p, [toggle.key]: !p[toggle.key] }))}
+                className={cn('relative h-6 w-11 shrink-0 rounded-full transition', prefs[toggle.key] ? 'bg-mint-400' : 'bg-slate-200')}
+                aria-label={toggle.label}
               >
-                <span className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all', prefs[t.key] ? 'left-[22px]' : 'left-0.5')} />
+                <span className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all', prefs[toggle.key] ? 'left-[22px]' : 'left-0.5')} />
               </button>
             </label>
           ))}
         </div>
       </div>
 
-      {/* Language */}
       <div className="rounded-[18px] border border-slate-100 bg-white p-6 shadow-card">
         <h3 className="flex items-center gap-2 font-bold text-navy-800">
-          <Languages size={17} className="text-brand-500" /> Language
+          <Languages size={17} className="text-brand-500" /> {t('settings.language')}
         </h3>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          {(
-            [
-              ['en', 'English'],
-              ['ceb', 'Cebuano (Bisaya)'],
-            ] as const
-          ).map(([code, label]) => (
+        <p className="mt-0.5 text-xs text-mut">{t('settings.languageHint')}</p>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {languages.map(({ code, label }) => (
             <button
               key={code}
               type="button"
-              onClick={() => setLang(code)}
+              onClick={() => setLang(code as LangCode)}
               className={cn(
                 'flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition',
                 lang === code ? 'border-brand-500 bg-brand-50 text-brand-500' : 'border-slate-200 text-ink hover:border-brand-300',
@@ -118,7 +112,6 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Danger zone */}
       <div className="rounded-[18px] border border-red-100 bg-white p-6 shadow-card">
         <h3 className="font-bold text-danger">Data & account</h3>
         <div className="mt-4 flex flex-wrap gap-3">

@@ -1,22 +1,25 @@
 import { Globe, Mail, MapPin, MessageCircle, Send, Share2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-
-const COLS = [
-  {
-    title: 'Explore',
-    links: ['Boarding houses', 'Popular locations', 'Categories', 'New listings', 'Siquijor guide'],
-  },
-  {
-    title: 'For Landlords',
-    links: ['Landlord dashboard', 'Room management', 'Payment tracking', 'AI Assistant', 'Subscription plans'],
-  },
-  {
-    title: 'Company',
-    links: ['About us', 'Careers', 'Press', 'Blog', 'Contact'],
-  },
-]
+import { useLanguage } from '../../lib/i18n'
 
 export default function Footer() {
+  const { t } = useLanguage()
+
+  const cols = [
+    {
+      title: t('footer.explore'),
+      links: ['Boarding houses', 'Popular locations', 'Categories', 'New listings', 'Siquijor guide'],
+    },
+    {
+      title: t('footer.landlords'),
+      links: ['Landlord dashboard', 'Room management', 'Payment tracking', 'AI Assistant', 'Subscription plans'],
+    },
+    {
+      title: t('footer.company'),
+      links: ['About us', 'Careers', 'Press', 'Blog', 'Contact'],
+    },
+  ]
+
   return (
     <footer className="relative overflow-hidden bg-navy-900 text-navy-100">
       <div className="pointer-events-none absolute -top-32 right-0 h-72 w-72 rounded-full bg-brand-500/20 blur-3xl" />
@@ -28,10 +31,7 @@ export default function Footer() {
             <Link to="/" className="inline-flex" aria-label="BoardEase home">
               <img src="/logo.png" alt="BoardEase" decoding="async" className="h-14 w-auto rounded-lg" />
             </Link>
-            <p className="mt-4 max-w-xs text-sm leading-relaxed text-navy-200">
-              The smart way to discover and manage boarding houses in Siquijor — trusted by boarders, students, and
-              landlords across the island.
-            </p>
+            <p className="mt-4 max-w-xs text-sm leading-relaxed text-navy-200">{t('footer.tagline')}</p>
             <div className="mt-5 flex gap-2">
               {[Globe, Send, Share2, MessageCircle].map((Icon, i) => (
                 <a
@@ -46,7 +46,7 @@ export default function Footer() {
             </div>
           </div>
 
-          {COLS.map((col) => (
+          {cols.map((col) => (
             <div key={col.title}>
               <h4 className="text-sm font-semibold uppercase tracking-wider text-white">{col.title}</h4>
               <ul className="mt-4 space-y-2.5">
@@ -68,14 +68,11 @@ export default function Footer() {
               <Mail size={18} />
             </span>
             <div>
-              <p className="font-semibold text-white">Stay in the loop</p>
-              <p className="text-sm text-navy-200">New boarding houses & island tips, once a month.</p>
+              <p className="font-semibold text-white">{t('footer.stayLoop')}</p>
+              <p className="text-sm text-navy-200">{t('footer.newsletter')}</p>
             </div>
           </div>
-          <form
-            className="flex w-full max-w-sm gap-2"
-            onSubmit={(e) => e.preventDefault()}
-          >
+          <form className="flex w-full max-w-sm gap-2" onSubmit={(e) => e.preventDefault()}>
             <input
               type="email"
               required
@@ -83,19 +80,23 @@ export default function Footer() {
               className="h-11 flex-1 rounded-xl border border-white/15 bg-white/10 px-4 text-sm text-white placeholder:text-navy-300 outline-none transition focus:border-mint-400"
             />
             <button className="h-11 rounded-xl bg-brand-500 px-5 text-sm font-semibold text-white transition hover:bg-brand-600">
-              Subscribe
+              {t('footer.subscribe')}
             </button>
           </form>
         </div>
 
         <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-white/10 pt-6 text-xs text-navy-300 sm:flex-row">
-          <p>© 2026 BoardEase. Made with ❤️ in Siquijor, Philippines.</p>
+          <p>© 2026 BoardEase. {t('footer.rights')}</p>
           <p className="flex items-center gap-1.5">
             <MapPin size={13} className="text-mint-400" /> San Juan · Larena · Lazi · Maria · Siquijor · Enrique Villanueva
           </p>
           <div className="flex gap-5">
-            <a href="#" className="transition hover:text-white">Privacy</a>
-            <a href="#" className="transition hover:text-white">Terms</a>
+            <a href="#" className="transition hover:text-white">
+              Privacy
+            </a>
+            <a href="#" className="transition hover:text-white">
+              Terms
+            </a>
           </div>
         </div>
       </div>
