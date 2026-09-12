@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Sep 12, 2026 at 11:42 PM
+-- Generation Time: Sep 12, 2026 at 11:47 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -20,6 +20,303 @@ SET time_zone = "+00:00";
 --
 -- Database: `boardease`
 --
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `boarder_profiles`
+--
+
+CREATE TABLE `boarder_profiles` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `age` int(11) DEFAULT NULL,
+  `gender` enum('male','female') DEFAULT NULL,
+  `school` varchar(255) DEFAULT NULL,
+  `course` varchar(255) DEFAULT NULL,
+  `guardian_name` varchar(255) DEFAULT NULL,
+  `guardian_phone` varchar(50) DEFAULT NULL,
+  `address` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `boarder_profiles`
+--
+
+INSERT INTO `boarder_profiles` (`id`, `user_id`, `age`, `gender`, `school`, `course`, `guardian_name`, `guardian_phone`, `address`, `created_at`) VALUES
+(2, 3, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-09-12 14:36:22');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `boarder_rentals`
+--
+
+CREATE TABLE `boarder_rentals` (
+  `id` int(11) NOT NULL,
+  `boarder_id` int(11) NOT NULL,
+  `room_id` int(11) NOT NULL,
+  `house_id` int(11) NOT NULL,
+  `move_in_date` date NOT NULL,
+  `contract_end` date NOT NULL,
+  `monthly_rent` int(11) NOT NULL,
+  `deposit` int(11) DEFAULT 0,
+  `advance` int(11) DEFAULT 0,
+  `status` enum('active','notice','expiring','ended') DEFAULT 'active',
+  `notes` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `boarding_houses`
+--
+
+CREATE TABLE `boarding_houses` (
+  `id` int(11) NOT NULL,
+  `landlord_id` int(11) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `tagline` varchar(500) DEFAULT NULL,
+  `municipality` varchar(100) NOT NULL,
+  `barangay` varchar(100) NOT NULL,
+  `address` text NOT NULL,
+  `description` text DEFAULT NULL,
+  `lat` decimal(10,7) DEFAULT NULL,
+  `lng` decimal(10,7) DEFAULT NULL,
+  `monthly_rent` int(11) DEFAULT 0,
+  `total_rooms` int(11) DEFAULT 0,
+  `occupied_rooms` int(11) DEFAULT 0,
+  `rating` decimal(2,1) DEFAULT 0.0,
+  `reviews_count` int(11) DEFAULT 0,
+  `verified` tinyint(1) DEFAULT 0,
+  `top_rated` tinyint(1) DEFAULT 0,
+  `wifi` tinyint(1) DEFAULT 0,
+  `aircon` tinyint(1) DEFAULT 0,
+  `kitchen` tinyint(1) DEFAULT 0,
+  `laundry` tinyint(1) DEFAULT 0,
+  `parking` tinyint(1) DEFAULT 0,
+  `pet_friendly` tinyint(1) DEFAULT 0,
+  `curfew` varchar(20) DEFAULT NULL,
+  `visitor_policy` text DEFAULT NULL,
+  `rules` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`rules`)),
+  `school_nearby` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`school_nearby`)),
+  `distance_from_school` varchar(100) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `boarding_houses`
+--
+
+INSERT INTO `boarding_houses` (`id`, `landlord_id`, `name`, `tagline`, `municipality`, `barangay`, `address`, `description`, `lat`, `lng`, `monthly_rent`, `total_rooms`, `occupied_rooms`, `rating`, `reviews_count`, `verified`, `top_rated`, `wifi`, `aircon`, `kitchen`, `laundry`, `parking`, `pet_friendly`, `curfew`, `visitor_policy`, `rules`, `school_nearby`, `distance_from_school`, `created_at`, `updated_at`) VALUES
+(1, 1, 'Sunset Boarding House', 'Beach-adjacent boarding with fast WiFi & study-friendly rooms', 'San Juan', 'Maite', 'Maite National Road, San Juan, Siquijor', 'Sunset Boarding House sits just minutes away from the famous San Juan sunset strip. Built for students and young professionals, every floor has a shared study lounge, high-speed fiber internet, and 24/7 potable water.', 9.1644000, 123.4962000, 2500, 28, 24, 5.0, 1, 1, 1, 1, 1, 1, 1, 1, 0, '10:00 PM', 'Visitors must register at the front desk. Overnight visitors are not allowed without prior approval.', '[\"Quiet hours from 10:00 PM to 6:00 AM\",\"No smoking inside the building\",\"Guests allowed only until 8:00 PM\",\"Keep common areas clean — assigned weekly chores\"]', '[\"Siquijor State College (Larena)\",\"Siquijor Science High School\"]', '12 min tricycle', '2026-09-06 06:27:40', '2026-09-12 14:18:59');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `conversations`
+--
+
+CREATE TABLE `conversations` (
+  `id` int(11) NOT NULL,
+  `boarder_id` int(11) NOT NULL,
+  `landlord_id` int(11) NOT NULL,
+  `house_id` int(11) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `last_message_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `favorites`
+--
+
+CREATE TABLE `favorites` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `house_id` int(11) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `favorites`
+--
+
+INSERT INTO `favorites` (`id`, `user_id`, `house_id`, `created_at`) VALUES
+(2, 3, 1, '2026-09-12 15:15:00');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `house_images`
+--
+
+CREATE TABLE `house_images` (
+  `id` int(11) NOT NULL,
+  `house_id` int(11) NOT NULL,
+  `image_url` varchar(500) NOT NULL,
+  `sort_order` int(11) DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `landlords`
+--
+
+CREATE TABLE `landlords` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `business_name` varchar(255) DEFAULT NULL,
+  `address` text DEFAULT NULL,
+  `government_id` varchar(100) DEFAULT NULL,
+  `verified` tinyint(1) DEFAULT 0,
+  `subscription` enum('none','starter','standard','premium') DEFAULT 'none',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `landlords`
+--
+
+INSERT INTO `landlords` (`id`, `user_id`, `business_name`, `address`, `government_id`, `verified`, `subscription`, `created_at`) VALUES
+(1, 1, 'Sunset Boarding House', 'Maite National Road, San Juan, Siquijor', NULL, 1, 'standard', '2026-09-06 06:27:40');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `messages`
+--
+
+CREATE TABLE `messages` (
+  `id` int(11) NOT NULL,
+  `conversation_id` int(11) NOT NULL,
+  `sender_id` int(11) NOT NULL,
+  `body` text NOT NULL,
+  `is_read` tinyint(1) DEFAULT 0,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `notifications`
+--
+
+CREATE TABLE `notifications` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `type` enum('rent-due','late','contract','vacant','occupancy','review','subscription','reservation','message','availability') NOT NULL,
+  `title` varchar(255) NOT NULL,
+  `message` text NOT NULL,
+  `is_read` tinyint(1) DEFAULT 0,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `link` varchar(255) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `payments`
+--
+
+CREATE TABLE `payments` (
+  `id` int(11) NOT NULL,
+  `rental_id` int(11) NOT NULL,
+  `month_key` varchar(7) NOT NULL,
+  `label` varchar(100) NOT NULL,
+  `amount` int(11) NOT NULL,
+  `due_date` date NOT NULL,
+  `paid_date` date DEFAULT NULL,
+  `status` enum('paid','late','pending','overdue') DEFAULT 'pending',
+  `method` varchar(50) DEFAULT NULL,
+  `reference` varchar(100) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `reservations`
+--
+
+CREATE TABLE `reservations` (
+  `id` int(11) NOT NULL,
+  `boarder_id` int(11) NOT NULL,
+  `house_id` int(11) NOT NULL,
+  `room_id` int(11) DEFAULT NULL,
+  `move_in_date` date NOT NULL,
+  `duration_months` int(11) DEFAULT NULL,
+  `message` text DEFAULT NULL,
+  `status` enum('pending','approved','declined','cancelled') DEFAULT 'pending',
+  `owner_response` text DEFAULT NULL,
+  `decided_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `reviews`
+--
+
+CREATE TABLE `reviews` (
+  `id` int(11) NOT NULL,
+  `house_id` int(11) NOT NULL,
+  `boarder_id` int(11) NOT NULL,
+  `rating` decimal(2,1) NOT NULL,
+  `comment` text DEFAULT NULL,
+  `cleanliness` tinyint(4) DEFAULT 5,
+  `safety` tinyint(4) DEFAULT 5,
+  `comfort` tinyint(4) DEFAULT 5,
+  `internet` tinyint(4) DEFAULT 5,
+  `owner_rating` tinyint(4) DEFAULT 5,
+  `location` tinyint(4) DEFAULT 5,
+  `value_rating` tinyint(4) DEFAULT 5,
+  `reply` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `rooms`
+--
+
+CREATE TABLE `rooms` (
+  `id` int(11) NOT NULL,
+  `house_id` int(11) NOT NULL,
+  `room_no` varchar(20) NOT NULL,
+  `type` enum('bedspace','single','double','studio') NOT NULL DEFAULT 'bedspace',
+  `capacity` int(11) NOT NULL DEFAULT 1,
+  `occupied` int(11) NOT NULL DEFAULT 0,
+  `monthly_rent` int(11) NOT NULL,
+  `gender` enum('male','female','mixed') DEFAULT 'mixed',
+  `aircon` tinyint(1) DEFAULT 0,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `rooms`
+--
+
+INSERT INTO `rooms` (`id`, `house_id`, `room_no`, `type`, `capacity`, `occupied`, `monthly_rent`, `gender`, `aircon`, `created_at`) VALUES
+(1, 1, '101', 'bedspace', 6, 6, 1500, 'mixed', 0, '2026-09-06 06:27:40'),
+(2, 1, '102', 'bedspace', 6, 6, 1500, 'male', 0, '2026-09-06 06:27:40'),
+(3, 1, '201', 'single', 1, 1, 2500, 'mixed', 0, '2026-09-06 06:27:40'),
+(4, 1, '202', 'single', 1, 1, 2500, 'female', 0, '2026-09-06 06:27:40'),
+(5, 1, '203', 'single', 1, 1, 2500, 'male', 0, '2026-09-06 06:27:40'),
+(6, 1, '204', 'double', 2, 2, 4000, 'female', 1, '2026-09-06 06:27:40'),
+(7, 1, '205', 'double', 2, 1, 4000, 'mixed', 1, '2026-09-06 06:27:40'),
+(8, 1, '206', 'studio', 1, 1, 5000, 'mixed', 1, '2026-09-06 06:27:40'),
+(9, 1, '207', 'bedspace', 4, 3, 1500, 'female', 0, '2026-09-06 06:27:40'),
+(10, 1, '301', 'single', 1, 1, 2800, 'mixed', 1, '2026-09-06 06:27:40'),
+(11, 1, '302', 'single', 1, 0, 2800, 'mixed', 1, '2026-09-06 06:27:40'),
+(12, 1, '303', 'double', 2, 1, 4200, 'mixed', 1, '2026-09-06 06:27:40');
 
 -- --------------------------------------------------------
 
@@ -53,6 +350,108 @@ INSERT INTO `users` (`id`, `email`, `password`, `role`, `name`, `phone`, `avatar
 --
 
 --
+-- Indexes for table `boarder_profiles`
+--
+ALTER TABLE `boarder_profiles`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `user_id` (`user_id`);
+
+--
+-- Indexes for table `boarder_rentals`
+--
+ALTER TABLE `boarder_rentals`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `boarder_id` (`boarder_id`),
+  ADD KEY `room_id` (`room_id`),
+  ADD KEY `house_id` (`house_id`);
+
+--
+-- Indexes for table `boarding_houses`
+--
+ALTER TABLE `boarding_houses`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `landlord_id` (`landlord_id`);
+
+--
+-- Indexes for table `conversations`
+--
+ALTER TABLE `conversations`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uniq_conversation` (`boarder_id`,`house_id`),
+  ADD KEY `house_id` (`house_id`),
+  ADD KEY `idx_conversations_boarder` (`boarder_id`),
+  ADD KEY `idx_conversations_landlord` (`landlord_id`);
+
+--
+-- Indexes for table `favorites`
+--
+ALTER TABLE `favorites`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uniq_favorite` (`user_id`,`house_id`),
+  ADD KEY `house_id` (`house_id`),
+  ADD KEY `idx_favorites_user` (`user_id`);
+
+--
+-- Indexes for table `house_images`
+--
+ALTER TABLE `house_images`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `house_id` (`house_id`);
+
+--
+-- Indexes for table `landlords`
+--
+ALTER TABLE `landlords`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `user_id` (`user_id`);
+
+--
+-- Indexes for table `messages`
+--
+ALTER TABLE `messages`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `sender_id` (`sender_id`),
+  ADD KEY `idx_messages_conversation` (`conversation_id`);
+
+--
+-- Indexes for table `notifications`
+--
+ALTER TABLE `notifications`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_notifications_user` (`user_id`);
+
+--
+-- Indexes for table `payments`
+--
+ALTER TABLE `payments`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_payments_rental` (`rental_id`);
+
+--
+-- Indexes for table `reservations`
+--
+ALTER TABLE `reservations`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `room_id` (`room_id`),
+  ADD KEY `idx_reservations_boarder` (`boarder_id`),
+  ADD KEY `idx_reservations_house` (`house_id`);
+
+--
+-- Indexes for table `reviews`
+--
+ALTER TABLE `reviews`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `boarder_id` (`boarder_id`),
+  ADD KEY `idx_reviews_house` (`house_id`);
+
+--
+-- Indexes for table `rooms`
+--
+ALTER TABLE `rooms`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_rooms_house` (`house_id`);
+
+--
 -- Indexes for table `users`
 --
 ALTER TABLE `users`
@@ -66,10 +465,179 @@ ALTER TABLE `users`
 --
 
 --
+-- AUTO_INCREMENT for table `boarder_profiles`
+--
+ALTER TABLE `boarder_profiles`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+
+--
+-- AUTO_INCREMENT for table `boarder_rentals`
+--
+ALTER TABLE `boarder_rentals`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT for table `boarding_houses`
+--
+ALTER TABLE `boarding_houses`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT for table `conversations`
+--
+ALTER TABLE `conversations`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `favorites`
+--
+ALTER TABLE `favorites`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT for table `house_images`
+--
+ALTER TABLE `house_images`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `landlords`
+--
+ALTER TABLE `landlords`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT for table `messages`
+--
+ALTER TABLE `messages`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `notifications`
+--
+ALTER TABLE `notifications`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `payments`
+--
+ALTER TABLE `payments`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT for table `reservations`
+--
+ALTER TABLE `reservations`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `reviews`
+--
+ALTER TABLE `reviews`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT for table `rooms`
+--
+ALTER TABLE `rooms`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
+
+--
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
+-- Constraints for dumped tables
+--
+
+--
+-- Constraints for table `boarder_profiles`
+--
+ALTER TABLE `boarder_profiles`
+  ADD CONSTRAINT `boarder_profiles_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `boarder_rentals`
+--
+ALTER TABLE `boarder_rentals`
+  ADD CONSTRAINT `boarder_rentals_ibfk_1` FOREIGN KEY (`boarder_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `boarder_rentals_ibfk_2` FOREIGN KEY (`room_id`) REFERENCES `rooms` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `boarder_rentals_ibfk_3` FOREIGN KEY (`house_id`) REFERENCES `boarding_houses` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `boarding_houses`
+--
+ALTER TABLE `boarding_houses`
+  ADD CONSTRAINT `boarding_houses_ibfk_1` FOREIGN KEY (`landlord_id`) REFERENCES `landlords` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `conversations`
+--
+ALTER TABLE `conversations`
+  ADD CONSTRAINT `conversations_ibfk_1` FOREIGN KEY (`boarder_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `conversations_ibfk_2` FOREIGN KEY (`landlord_id`) REFERENCES `landlords` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `conversations_ibfk_3` FOREIGN KEY (`house_id`) REFERENCES `boarding_houses` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `favorites`
+--
+ALTER TABLE `favorites`
+  ADD CONSTRAINT `favorites_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `favorites_ibfk_2` FOREIGN KEY (`house_id`) REFERENCES `boarding_houses` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `house_images`
+--
+ALTER TABLE `house_images`
+  ADD CONSTRAINT `house_images_ibfk_1` FOREIGN KEY (`house_id`) REFERENCES `boarding_houses` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `landlords`
+--
+ALTER TABLE `landlords`
+  ADD CONSTRAINT `landlords_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `messages`
+--
+ALTER TABLE `messages`
+  ADD CONSTRAINT `messages_ibfk_1` FOREIGN KEY (`conversation_id`) REFERENCES `conversations` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `messages_ibfk_2` FOREIGN KEY (`sender_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `notifications`
+--
+ALTER TABLE `notifications`
+  ADD CONSTRAINT `notifications_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `payments`
+--
+ALTER TABLE `payments`
+  ADD CONSTRAINT `payments_ibfk_1` FOREIGN KEY (`rental_id`) REFERENCES `boarder_rentals` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `reservations`
+--
+ALTER TABLE `reservations`
+  ADD CONSTRAINT `reservations_ibfk_1` FOREIGN KEY (`boarder_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `reservations_ibfk_2` FOREIGN KEY (`house_id`) REFERENCES `boarding_houses` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `reservations_ibfk_3` FOREIGN KEY (`room_id`) REFERENCES `rooms` (`id`) ON DELETE SET NULL;
+
+--
+-- Constraints for table `reviews`
+--
+ALTER TABLE `reviews`
+  ADD CONSTRAINT `reviews_ibfk_1` FOREIGN KEY (`house_id`) REFERENCES `boarding_houses` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `reviews_ibfk_2` FOREIGN KEY (`boarder_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `rooms`
+--
+ALTER TABLE `rooms`
+  ADD CONSTRAINT `rooms_ibfk_1` FOREIGN KEY (`house_id`) REFERENCES `boarding_houses` (`id`) ON DELETE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
