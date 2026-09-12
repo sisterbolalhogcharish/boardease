@@ -1,10 +1,11 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, ChevronDown, Globe, LogIn, LogOut, Menu, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { useLanguage, type LangCode } from '../../lib/i18n'
 import { cn } from '../../lib/utils'
+import { navigationSections } from '../../pages/Landing'
 
 export default function Navbar({ solid }: { solid?: boolean }) {
   const [scrolled, setScrolled] = useState(false)
@@ -12,20 +13,74 @@ export default function Navbar({ solid }: { solid?: boolean }) {
   const [langOpen, setLangOpen] = useState(false)
   const { user, logout } = useAuth()
   const { lang, setLang, t, languages } = useLanguage()
-  const navigate = useNavigate()
+  const location = useLocation()
+  const langRef = useRef<HTMLDivElement>(null)
 
-  const links = [
-    { label: t('nav.explore'), href: '/search' },
-    { label: t('nav.locations'), href: '/#locations' },
-    { label: t('nav.categories'), href: '/#categories' },
-    { label: t('nav.howItWorks'), href: '/#how-it-works' },
-  ]
+  const navLinkMeta: Array<{ href: string; section?: string; labelKey: string }> = navigationSections.map((s) => {
+    let href = '/'
+    let section: string | undefined
+    let labelKey: string
+
+    if (s.id === 'explore') {
+      href = '/'
+      section = 'featured'
+      labelKey = 'nav.explore'
+    } else {
+      href = '/'
+      section = s.id
+      labelKey = `nav.${s.id === 'how-it-works' ? 'howItWorks' : s.id}`
+    }
+
+    return { href, section, labelKey }
+  })
 
   const current = languages.find((l) => l.code === lang) ?? languages[0]
 
+  const navLinks = [
+    navLinkMeta.find((m) => m.labelKey === 'nav.explore'),
+    navLinkMeta.find((m) => m.labelKey === 'nav.locations'),
+    navLinkMeta.find((m) => m.labelKey === 'nav.categories'),
+    navLinkMeta.find((m) => m.labelKey === 'nav.howItWorks'),
+    navLinkMeta.find((m) => m.labelKey === 'nav.pricing'),
+  ].filter((m): m is { href: string; section?: string; labelKey: string } => Boolean(m))
+
+  const [activeSection, setActiveSection] = useState('hero')
+
+  // Map nav sections to actual DOM element IDs
+  const sectionToDomId: Record<string, string> = {
+    explore: 'featured',
+    featured: 'featured',
+    categories: 'categories',
+    locations: 'locations',
+    'how-it-works': 'how-it-works',
+    pricing: 'pricing',
+  }
+
+  useEffect(() => {
+    const onScroll = () => {
+      // Use DOM IDs that actually exist in the page
+      const domIds = ['featured', 'categories', 'locations', 'how-it-works', 'pricing']
+      const section = domIds.reduce<string>((closest, id) => {
+        const el = document.getElementById(id)
+        if (!el) return closest
+        const top = el.getBoundingClientRect().top
+        const closestEl = document.getElementById(closest)
+        const closestTop = closestEl ? closestEl.getBoundingClientRect().top : -999
+        if (top - 90 <= 0 && top > closestTop) {
+          return id
+        }
+        return closest
+      }, 'hero')
+      setActiveSection(section)
+    }
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
   const handleLogout = () => {
     logout()
-    navigate('/')
+    window.location.href = '/'
   }
 
   const pickLang = (code: LangCode) => {
@@ -34,17 +89,31 @@ export default function Navbar({ solid }: { solid?: boolean }) {
   }
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 12)
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
+    const onScrollFrame = () => setScrolled(window.scrollY > 12)
+
+    let ticking = false
+    const onScrollThrottled = () => {
+      if (ticking) return
+      ticking = true
+      requestAnimationFrame(() => {
+        ticking = false
+        onScrollFrame()
+      })
+    }
+
+    onScrollFrame()
+    window.addEventListener('scroll', onScrollThrottled, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScrollThrottled)
+    }
   }, [])
 
   useEffect(() => {
     if (!langOpen) return
+    const node = langRef.current
+    if (!node) return
     const onPointer = (e: MouseEvent) => {
-      const target = e.target as Element | null
-      if (!target?.closest?.('[data-lang-menu]')) setLangOpen(false)
+      if (!node.contains(e.target as Node)) setLangOpen(false)
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setLangOpen(false)
@@ -57,15 +126,69 @@ export default function Navbar({ solid }: { solid?: boolean }) {
     }
   }, [langOpen])
 
-  const overlay = !solid && !scrolled
+  useEffect(() => {
+    if (!location.hash) return
+    const id = location.hash.slice(1)
+    const el = document.getElementById(id)
+    if (!el) return
+    const top = el.getBoundingClientRect().top + window.scrollY - 88
+    window.scrollTo({ top, behavior: 'smooth' })
+  }, [location.hash])
+
+  const scrolledSolid = solid || scrolled
+  const overlay = !scrolledSolid
 
   const langButtonClass = cn(
     'inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium transition',
     overlay ? 'text-white/90 hover:bg-white/10 hover:text-white' : 'text-navy-700 hover:bg-navy-50',
   )
 
+  const NavLink = ({ href, labelKey, section }: { href: string; labelKey: string; section?: string }) => {
+    const label = t(labelKey)
+    const isPageActive = href === '/search' ? location.pathname === '/search' : location.pathname === '/'
+    const active = section ? activeSection === section : isPageActive
+    const baseClass = overlay ? 'text-white/60 hover:text-white' : 'text-navy-500 hover:text-navy-800'
+
+    return (
+      <a
+        href={section ? `#${section === 'explore' ? 'hero' : section}` : href}
+        onClick={(e) => {
+          e.preventDefault()
+          setOpen(false)
+
+          if (section) {
+            const targetId = section === 'explore' ? 'hero' : section
+            const el = document.getElementById(targetId)
+            if (el) {
+              const top = el.getBoundingClientRect().top + window.scrollY - 88
+              window.scrollTo({ top, behavior: 'smooth' })
+            }
+            return
+          }
+
+          if (href !== '/') {
+            window.location.href = href
+          }
+        }}
+        className={cn(
+          'group relative rounded-full px-4 py-2 text-sm font-medium transition-colors duration-300',
+          active && section ? (overlay ? 'text-white' : 'text-navy-800') : baseClass,
+        )}
+        aria-current={active ? 'page' : undefined}
+      >
+        {label}
+        <span
+          className={cn(
+            'absolute -bottom-0.5 left-1/2 h-1 w-0 rounded-full bg-brand-400 shadow-sm transition-all duration-300',
+            active && section ? (overlay ? 'w-[60%] -translate-x-1/2 shadow-[0_0_8px_rgba(74_144_238_0.7)]' : 'w-[40%] -translate-x-1/2 shadow-[0_0_6px_rgba(74_144_238_0.5)]') : 'w-0',
+          )}
+        />
+      </a>
+    )
+  }
+
   const LangMenu = ({ mobile = false }: { mobile?: boolean }) => (
-    <div className={cn('relative', mobile && 'w-full')} data-lang-menu>
+    <div className={cn('relative', mobile && 'w-full')} ref={langRef} data-lang-menu>
       <button
         type="button"
         className={cn(langButtonClass, mobile && 'w-full justify-between rounded-xl px-4 py-3')}
@@ -129,6 +252,7 @@ export default function Navbar({ solid }: { solid?: boolean }) {
       className={cn(
         'fixed inset-x-0 top-0 z-50 transition-all duration-300',
         overlay ? 'glass-dark' : 'glass shadow-[0_8px_30px_rgb(11_45_99/0.08)]',
+        scrolledSolid && 'shadow-md',
       )}
     >
       <nav className="mx-auto flex h-[68px] max-w-7xl items-center justify-between px-4 sm:px-6">
@@ -142,21 +266,11 @@ export default function Navbar({ solid }: { solid?: boolean }) {
         </Link>
 
         <div className="hidden items-center gap-1 md:flex">
-          {links.map((l) => (
-            <a
-              key={l.href}
-              href={l.href}
-              onClick={() => setOpen(false)}
-              className={cn(
-                'rounded-full px-4 py-2 text-sm font-medium transition',
-                overlay
-                  ? 'text-white/90 hover:bg-white/10 hover:text-white'
-                  : 'text-navy-700 hover:bg-navy-50 hover:text-navy-800',
-              )}
-            >
-              {l.label}
-            </a>
-          ))}
+          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+            {navLinks.map((l) => (
+              <NavLink key={l.section ?? l.labelKey} href={l.href} labelKey={l.labelKey} section={l.section} />
+            ))}
+          </div>
         </div>
 
         <div className="hidden items-center gap-2 md:flex">
@@ -215,18 +329,8 @@ export default function Navbar({ solid }: { solid?: boolean }) {
             )}
           >
             <div className="flex flex-col gap-1 px-4 py-4">
-              {links.map((l) => (
-                <a
-                  key={l.href}
-                  href={l.href}
-                  onClick={() => setOpen(false)}
-                  className={cn(
-                    'rounded-xl px-4 py-3 text-sm font-medium transition',
-                    overlay ? 'text-white/90 hover:bg-white/10' : 'text-navy-700 hover:bg-navy-50',
-                  )}
-                >
-                  {l.label}
-                </a>
+              {navLinks.map((l) => (
+                <NavLink key={l.section ?? l.labelKey} href={l.href} labelKey={l.labelKey} section={l.section} />
               ))}
               <div className={cn(overlay ? 'text-white' : 'text-navy-800')}>
                 <LangMenu mobile />

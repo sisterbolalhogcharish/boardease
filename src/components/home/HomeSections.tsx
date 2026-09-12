@@ -1,26 +1,25 @@
-import { animate, motion, useInView } from 'framer-motion'
+import { motion } from 'framer-motion'
 import {
   ArrowRight,
   BedDouble,
-  Bot,
   Car,
+  Check,
   CreditCard,
   DoorOpen,
-  HeartHandshake,
-  LineChart,
   Quote,
   School,
+  ShieldCheck,
   Snowflake,
   Sparkles,
   Star,
+  Users,
   Venus,
   Wifi,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useFeaturedHouses, useLocations } from '../../lib/hooks'
 import { useLanguage } from '../../lib/i18n'
-import { cn } from '../../lib/utils'
+import { cn, peso } from '../../lib/utils'
 import HouseCard from '../HouseCard'
 import { HouseImage, Reveal, SectionHeading, Skeleton } from '../ui'
 
@@ -153,23 +152,6 @@ export function Categories() {
 /* ------------------------------------------------------------------ */
 /*  Stats + benefits                                                   */
 /* ------------------------------------------------------------------ */
-function Counter({ to, suffix = '' }: { to: number; suffix?: string }) {
-  const ref = useRef<HTMLSpanElement>(null)
-  const inView = useInView(ref, { once: true, margin: '-40px' })
-  const [val, setVal] = useState(0)
-  useEffect(() => {
-    if (!inView) return
-    const controls = animate(0, to, { duration: 1.8, ease: 'easeOut', onUpdate: (v) => setVal(Math.round(v)) })
-    return () => controls.stop()
-  }, [inView, to])
-  return (
-    <span ref={ref}>
-      {val.toLocaleString()}
-      {suffix}
-    </span>
-  )
-}
-
 const STAT_DEFS = [
   { value: 40, suffix: '+', labelKey: 'stats.listed' },
   { value: 500, suffix: '+', labelKey: 'stats.served' },
@@ -177,17 +159,10 @@ const STAT_DEFS = [
   { value: 6, suffix: '', labelKey: 'stats.municipalities' },
 ]
 
-const BENEFIT_DEFS = [
-  { icon: Bot, titleKey: 'stats.aiTitle', descKey: 'stats.aiDesc' },
-  { icon: LineChart, titleKey: 'stats.analyticsTitle', descKey: 'stats.analyticsDesc' },
-  { icon: Sparkles, titleKey: 'stats.receiptsTitle', descKey: 'stats.receiptsDesc' },
-  { icon: HeartHandshake, titleKey: 'stats.trustedTitle', descKey: 'stats.trustedDesc' },
-]
-
 export function StatsBenefits() {
   const { t } = useLanguage()
   return (
-    <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
+    <section id="stats-benefits" className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
       <div className="grid items-center gap-12 lg:grid-cols-2">
         <div>
           <SectionHeading
@@ -196,15 +171,15 @@ export function StatsBenefits() {
             subtitle={t('stats.subtitle')}
           />
           <div className="mt-8 space-y-5">
-            {BENEFIT_DEFS.map((b, i) => (
-              <Reveal key={b.titleKey} delay={i * 0.06}>
+            {STAT_DEFS.slice(0, 2).map((s, i) => (
+              <Reveal key={s.labelKey} delay={i * 0.06}>
                 <div className="flex gap-4 rounded-2xl border border-slate-100 bg-white p-4 shadow-card transition hover:shadow-card-hover">
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-navy-800 to-brand-500 text-white">
-                    <b.icon size={20} />
+                    <Users size={20} />
                   </span>
                   <div>
-                    <p className="font-bold text-navy-800">{t(b.titleKey)}</p>
-                    <p className="mt-0.5 text-sm leading-relaxed text-ink">{t(b.descKey)}</p>
+                    <p className="font-bold text-navy-800">{t(s.labelKey)}</p>
+                    <p className="mt-0.5 text-sm leading-relaxed text-ink">{t('stats.statsIntro')}</p>
                   </div>
                 </div>
               </Reveal>
@@ -229,18 +204,9 @@ export function StatsBenefits() {
             className="absolute -bottom-6 -left-4 rounded-[18px] border border-slate-100 bg-white p-5 shadow-float sm:-left-8"
           >
             <p className="text-3xl font-extrabold text-navy-800">
-              <Counter to={96} suffix="%" />
+              <Users />
             </p>
             <p className="text-xs font-medium text-ink">{t('stats.onTime')}</p>
-            <div className="mt-3 h-2 w-44 overflow-hidden rounded-full bg-slate-100">
-              <motion.div
-                initial={{ width: 0 }}
-                whileInView={{ width: '96%' }}
-                viewport={{ once: true }}
-                transition={{ duration: 1.4, delay: 0.4, ease: 'easeOut' }}
-                className="h-full rounded-full bg-gradient-to-r from-brand-500 to-mint-400"
-              />
-            </div>
           </motion.div>
         </div>
       </div>
@@ -250,7 +216,7 @@ export function StatsBenefits() {
           <Reveal key={s.labelKey} delay={i * 0.07}>
             <div className="text-center">
               <p className="text-4xl font-extrabold text-white">
-                <Counter to={s.value} suffix={s.suffix} />
+                {s.value}{s.suffix}
               </p>
               <p className="mt-2 text-sm font-medium text-navy-200">{t(s.labelKey)}</p>
             </div>
@@ -327,6 +293,167 @@ export function Testimonials() {
           ))}
         </div>
       </div>
+    </section>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Pricing                                                            */
+/* ------------------------------------------------------------------ */
+interface PricingPlan {
+  nameKey: string
+  price: number
+  featureKeys: string[]
+  featured?: boolean
+}
+
+const PRICING_PLANS: PricingPlan[] = [
+  {
+    nameKey: 'pricing.basic',
+    price: 199,
+    featureKeys: [
+      'pricing.f.boards5',
+      'pricing.f.aiAssistant',
+      'pricing.f.notifications',
+      'pricing.f.dashboardBasic',
+      'pricing.f.analytics',
+      'pricing.f.backup',
+      'pricing.f.reportsBasic',
+    ],
+  },
+  {
+    nameKey: 'pricing.standard',
+    price: 499,
+    featureKeys: [
+      'pricing.f.boards15',
+      'pricing.f.aiAssistant',
+      'pricing.f.notifications',
+      'pricing.f.dashboardEnhanced',
+      'pricing.f.analytics',
+      'pricing.f.backup',
+      'pricing.f.reportsDetailed',
+    ],
+    featured: true,
+  },
+  {
+    nameKey: 'pricing.premium',
+    price: 899,
+    featureKeys: [
+      'pricing.f.boards30',
+      'pricing.f.aiAssistant',
+      'pricing.f.notifications',
+      'pricing.f.dashboardAdvanced',
+      'pricing.f.analyticsAdvanced',
+      'pricing.f.backup',
+      'pricing.f.reportsAdvanced',
+      'pricing.f.prioritySupport',
+      'pricing.f.managementControls',
+    ],
+  },
+]
+
+export function Pricing() {
+  const { t } = useLanguage()
+  return (
+    <section id="pricing" className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
+      <SectionHeading
+        center
+        eyebrow={t('pricing.badge')}
+        title={t('pricing.title')}
+        subtitle={t('pricing.subtitle')}
+      />
+
+      <Reveal delay={0.08}>
+        <p className="mx-auto mt-6 flex max-w-2xl items-start justify-center gap-2 rounded-2xl bg-mint-50 px-4 py-3 text-center text-xs font-medium leading-relaxed text-navy-700 ring-1 ring-mint-100">
+          <Users size={15} className="mt-0.5 shrink-0 text-mint-600" />
+          <span>{t('pricing.boarderNote')}</span>
+        </p>
+      </Reveal>
+
+      <div className="mt-12 grid gap-5 md:grid-cols-3">
+        {PRICING_PLANS.map((plan, i) => {
+          const featured = Boolean(plan.featured)
+          return (
+            <Reveal key={plan.nameKey} delay={i * 0.06} className="h-full">
+              <article
+                className={cn(
+                  'relative flex h-full flex-col rounded-[22px] border p-6 transition-shadow duration-300',
+                  featured
+                    ? 'border-navy-700 bg-gradient-to-b from-navy-900 to-navy-800 shadow-card-hover md:-my-4 md:h-[calc(100%+2rem)]'
+                    : 'border-slate-100 bg-white shadow-card hover:shadow-card-hover',
+                )}
+              >
+                {featured && (
+                  <span className="absolute -top-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full bg-gradient-to-r from-brand-500 to-mint-400 px-4 py-1.5 text-[11px] font-bold text-white shadow-lg">
+                    <Sparkles size={11} /> {t('pricing.mostPopular')}
+                  </span>
+                )}
+
+                <h3
+                  className={cn(
+                    'text-xs font-bold uppercase tracking-[0.14em]',
+                    featured ? 'text-mint-300' : 'text-navy-500',
+                  )}
+                >
+                  {t(plan.nameKey)}
+                </h3>
+
+                <p className="mt-4 flex items-baseline gap-1">
+                  <span className={cn('text-4xl font-extrabold tracking-tight', featured ? 'text-white' : 'text-navy-800')}>
+                    {peso(plan.price)}
+                  </span>
+                  <span className={cn('text-sm font-medium', featured ? 'text-navy-200' : 'text-mut')}>
+                    {t('pricing.perMonth')}
+                  </span>
+                </p>
+
+                <ul
+                  className={cn(
+                    'mt-6 flex-1 space-y-2.5 border-t pt-6',
+                    featured ? 'border-white/10' : 'border-slate-100',
+                  )}
+                >
+                  {plan.featureKeys.map((f) => (
+                    <li
+                      key={f}
+                      className={cn('flex items-start gap-2.5 text-sm', featured ? 'text-navy-100' : 'text-ink')}
+                    >
+                      <span
+                        className={cn(
+                          'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full',
+                          featured ? 'bg-white/15 text-mint-300' : 'bg-brand-50 text-brand-500',
+                        )}
+                      >
+                        <Check size={11} strokeWidth={3} />
+                      </span>
+                      {t(f)}
+                    </li>
+                  ))}
+                </ul>
+
+                <Link
+                  to="/login?role=landlord"
+                  className={cn(
+                    'mt-5 w-full rounded-xl py-3 text-center text-sm font-bold transition-all duration-300',
+                    featured
+                      ? 'bg-gradient-to-r from-brand-500 to-mint-400 text-white shadow-[0_10px_24px_rgb(30_115_232/0.4)] hover:-translate-y-0.5'
+                      : 'border border-navy-800 text-navy-800 hover:bg-navy-800 hover:text-white',
+                  )}
+                >
+                  {t('pricing.getStarted')}
+                </Link>
+              </article>
+            </Reveal>
+          )
+        })}
+      </div>
+
+      <Reveal delay={0.2}>
+        <p className="mt-10 flex flex-wrap items-center justify-center gap-1.5 text-center text-xs text-ink">
+          <ShieldCheck size={15} className="shrink-0 text-mint-500" />
+          {t('pricing.note')}
+        </p>
+      </Reveal>
     </section>
   )
 }

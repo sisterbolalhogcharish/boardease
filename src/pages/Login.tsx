@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import { Building2, Eye, EyeOff, Lock, LogIn, Mail, Users } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth, type UserRole } from '../lib/auth'
 import { cn } from '../lib/utils'
 
@@ -25,9 +25,15 @@ const ROLE_CARDS: { role: UserRole; icon: typeof Building2; title: string; desc:
 export default function Login() {
   const { login } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
-  const [step, setStep] = useState<'role' | 'form'>('role')
-  const [role, setRole] = useState<UserRole | null>(null)
+  // Pricing CTAs deep-link with ?role=landlord so the landlord flow is preselected.
+  const requestedRole = searchParams.get('role')
+  const presetRole: UserRole | null =
+    requestedRole === 'landlord' || requestedRole === 'boarder' ? requestedRole : null
+
+  const [step, setStep] = useState<'role' | 'form'>(presetRole ? 'form' : 'role')
+  const [role, setRole] = useState<UserRole | null>(presetRole)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)

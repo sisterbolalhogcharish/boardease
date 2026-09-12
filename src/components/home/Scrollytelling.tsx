@@ -442,9 +442,6 @@ export default function Scrollytelling() {
     })
   }, [smoothProgress])
 
-  // Transform for the progress bar
-  const progressWidth = useTransform(smoothProgress, [0, 1], ['0%', '100%'])
-
   // Transform for each step's opacity
   const step0Opacity = useTransform(smoothProgress, [0, 0.05, 0.2, 0.25], [0, 1, 1, 0])
   const step1Opacity = useTransform(smoothProgress, [0.2, 0.3, 0.5, 0.55], [0, 1, 1, 0])
@@ -481,8 +478,7 @@ export default function Scrollytelling() {
       {/* Section header */}
       <div className="relative z-10 mx-auto max-w-7xl px-4 pt-24 pb-8 sm:px-6">
         <div className="text-center">
-          <span className="inline-flex items-center gap-2 rounded-full bg-white/5 px-4 py-1.5 text-xs font-semibold text-mint-300 ring-1 ring-white/10">
-            <Sparkles size={14} /> The BoardEase experience
+          <span className="inline-flex items-center gap-2 rounded-full bg-white/5 px-4 py-1.5 text-xs font-semibold text-mint-300 ring-1 ring-white/10">                <Sparkles size={14} /> The BoardEase experience
           </span>
           <h2 className="mt-5 text-3xl font-extrabold tracking-tight text-white sm:text-4xl lg:text-5xl">
             How BoardEase Works
@@ -493,48 +489,9 @@ export default function Scrollytelling() {
         </div>
       </div>
 
-      {/* Progress bar */}
-      <div className="sticky top-0 z-20 mx-auto max-w-7xl px-4 sm:px-6">
-        <div className="h-1 overflow-hidden rounded-full bg-white/10">
-          <motion.div
-            style={{ width: progressWidth }}
-            className="h-full rounded-full bg-gradient-to-r from-brand-500 via-mint-400 to-brand-500"
-          />
-        </div>
-        {/* Step indicators */}
-        <div className="mt-3 flex items-center justify-between">
-          {STEPS.map((s, i) => (
-            <button
-              key={s.num}
-              onClick={() => {
-                const target = containerRef.current
-                if (target) {
-                  const targetScroll = target.offsetTop + (i / 4) * (target.offsetHeight - window.innerHeight)
-                  window.scrollTo({ top: targetScroll, behavior: 'smooth' })
-                }
-              }}
-              className={`flex items-center gap-2 text-xs font-semibold transition-colors duration-300 ${
-                activeStep === i ? 'text-white' : 'text-navy-400 hover:text-navy-200'
-              }`}
-            >
-              <span
-                className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold transition-all duration-300 ${
-                  activeStep === i
-                    ? 'bg-gradient-to-br from-brand-500 to-mint-400 text-white shadow-lg shadow-brand-500/30'
-                    : 'bg-white/10 text-navy-300'
-                }`}
-              >
-                {s.num}
-              </span>
-              <span className="hidden sm:inline">{s.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Scrollytelling body */}
       <div ref={containerRef} className="relative" style={{ height: '500vh' }}>
-        <div className="sticky top-0 flex h-screen items-center">
+        <div className="flex h-screen items-center">
           <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[1fr_1.1fr] lg:gap-16 lg:py-10">
             {/* Step text — MOBILE: non-absolute, above visual. DESKTOP: absolute side-by-side */}
             <div className="relative order-2 flex flex-col justify-center lg:order-1">
@@ -630,7 +587,7 @@ export default function Scrollytelling() {
       </div>
 
       {/* Bottom decorative gradient */}
-      <div className="h-24 bg-gradient-to-b from-navy-950 to-white" />
+      <div className="h-12 bg-gradient-to-b from-navy-950 to-white" />
     </section>
   )
 }
