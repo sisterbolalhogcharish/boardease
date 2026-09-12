@@ -63,6 +63,8 @@ export interface Boarder {
   roomId: string
   name: string
   avatarColor: string
+  /** Uploaded profile photo (data URL) — empty when the boarder has none. */
+  avatarUrl?: string
   age: number
   gender: 'male' | 'female'
   school: string
@@ -109,6 +111,8 @@ export interface Review {
   houseId: string
   author: string
   avatarColor: string
+  /** Uploaded profile photo (data URL) — empty when the boarder has none. */
+  avatarUrl?: string
   rating: number
   categories: ReviewRating
   comment: string

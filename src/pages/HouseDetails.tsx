@@ -2,16 +2,16 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   ArrowLeft,
   BadgeCheck,
+  BedDouble,
+  CalendarClock,
   Car,
   ChefHat,
   Clock,
   DoorOpen,
-  Heart,
   MapPin,
   MessageCircle,
   PawPrint,
   Phone,
-  Send,
   ShieldCheck,
   Snowflake,
   Star,
@@ -19,14 +19,20 @@ import {
   WashingMachine,
   Wifi,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import HouseCard from '../components/HouseCard'
+import ContactOwnerModal from '../components/boarder/ContactOwnerModal'
+import { CompareButton, FavoriteButton, showToast } from '../components/boarder/HouseActions'
+import LocationMap from '../components/boarder/LocationMap'
+import ReservationModal from '../components/boarder/ReservationModal'
 import Footer from '../components/layout/Footer'
 import Navbar from '../components/layout/Navbar'
-import { HouseImage, Modal, Rating, Reveal, Skeleton } from '../components/ui'
-import { useHouse, useReviews, useSimilarHouses } from '../lib/hooks'
+import { Avatar, HouseImage, Rating, Reveal, Skeleton } from '../components/ui'
+import { useAuth } from '../lib/auth'
+import { useHouse, usePublicRooms, useReviews, useSimilarHouses } from '../lib/hooks'
 import { cn, peso, prettyDate } from '../lib/utils'
+import type { PublicRoom } from '../lib/api'
 import type { ReviewRating } from '../server/types'
 
 const RATING_CATEGORIES: { key: keyof ReviewRating; label: string }[] = [
@@ -41,13 +47,21 @@ const RATING_CATEGORIES: { key: keyof ReviewRating; label: string }[] = [
 
 export default function HouseDetails() {
   const { id } = useParams()
+  const [params] = useSearchParams()
+  const navigate = useNavigate()
+  const { user } = useAuth()
   const { data: house, isLoading } = useHouse(id)
   const { data: reviews = [] } = useReviews(id)
   const { data: similar = [] } = useSimilarHouses(id)
+  const { data: rooms = [] } = usePublicRooms(id)
   const [active, setActive] = useState(0)
-  const [fav, setFav] = useState(false)
   const [contactOpen, setContactOpen] = useState(false)
-  const [sent, setSent] = useState(false)
+  const [reserveOpen, setReserveOpen] = useState(false)
+
+  // Deep link: /houses/:id?reserve=1 opens the reservation request straight away.
+  useEffect(() => {
+    if (params.get('reserve') === '1' && user?.role === 'boarder') setReserveOpen(true)
+  }, [params, user?.role])
 
   const categoryAverages = useMemo(() => {
     const sums = {} as Record<keyof ReviewRating, number>
@@ -83,15 +97,16 @@ export default function HouseDetails() {
     { on: house.parking, icon: Car, label: 'Parking' },
     { on: house.petFriendly, icon: PawPrint, label: 'Pet friendly' },
   ]
-  const bbox = `${house.lng - 0.012}%2C${house.lat - 0.008}%2C${house.lng + 0.012}%2C${house.lat + 0.008}`
-
   return (
     <div className="min-h-screen">
       <Navbar solid />
       <div className="pt-[68px]">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-          <Link to="/search" className="inline-flex items-center gap-1.5 text-sm font-semibold text-ink transition hover:text-brand-500">
-            <ArrowLeft size={15} /> Back to search
+          <Link
+            to={user?.role === 'boarder' ? '/boarder/browse' : '/search'}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-ink transition hover:text-brand-500"
+          >
+            <ArrowLeft size={15} /> {user?.role === 'boarder' ? 'Back to Browse Houses' : 'Back to search'}
           </Link>
 
           {/* Gallery */}
@@ -109,13 +124,10 @@ export default function HouseDetails() {
                   <HouseImage src={house.images[active]} alt={`${house.name} photo ${active + 1}`} className="h-full w-full" />
                 </motion.div>
               </AnimatePresence>
-              <button
-                onClick={() => setFav((f) => !f)}
-                aria-label="Favorite"
-                className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 shadow-md backdrop-blur transition hover:scale-110"
-              >
-                <Heart size={18} className={fav ? 'fill-danger text-danger' : 'text-slate-600'} />
-              </button>
+              <div className="absolute right-4 top-4 flex flex-col gap-2">
+                <FavoriteButton houseId={house.id} />
+                <CompareButton houseId={house.id} />
+              </div>
               {house.verified && (
                 <span className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-navy-800 shadow-md backdrop-blur">
                   <BadgeCheck size={14} className="text-brand-500" /> Verified listing
@@ -197,6 +209,69 @@ export default function HouseDetails() {
                 </div>
               </Reveal>
 
+              {/* Public room availability (never shows tenant names) */}
+              <Reveal className="mt-10">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-xl font-bold text-navy-800">Available rooms</h2>
+                  <span className="text-xs text-mut">{vacant} of {house.totalRooms} bed{house.totalRooms === 1 ? '' : 's'} free</span>
+                </div>
+                {rooms.length === 0 ? (
+                  <p className="mt-3 rounded-2xl border border-slate-100 bg-surface p-5 text-sm text-ink">
+                    The owner has not published individual rooms yet. Send a message to ask about availability.
+                  </p>
+                ) : (
+                  <>
+                    <div className="mt-4 space-y-3">
+                      {rooms.map((room: PublicRoom) => (
+                        <div
+                          key={room.id}
+                          className={cn(
+                            'flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4',
+                            room.available > 0 ? 'border-mint-100 bg-mint-50/40' : 'border-slate-100 bg-surface',
+                          )}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={cn(
+                                'flex h-10 w-10 items-center justify-center rounded-xl',
+                                room.available > 0 ? 'bg-mint-100 text-mint-600' : 'bg-slate-100 text-slate-400',
+                              )}
+                            >
+                              <BedDouble size={18} />
+                            </span>
+                            <div>
+                              <p className="text-sm font-bold text-navy-800">
+                                Room {room.roomNo} · <span className="capitalize">{room.type}</span>
+                              </p>
+                              <p className="text-xs text-ink">
+                                {peso(room.monthlyRent)}/month · sleeps {room.capacity} ·{' '}
+                                {room.gender === 'mixed' ? 'Mixed' : room.gender === 'female' ? 'Female only' : 'Male only'}
+                                {room.aircon ? ' · aircon' : ''}
+                              </p>
+                            </div>
+                          </div>
+                          <span
+                            className={cn(
+                              'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold',
+                              room.available > 0
+                                ? 'border-mint-100 bg-white text-mint-600'
+                                : 'border-slate-200 bg-white text-slate-500',
+                            )}
+                          >
+                            {room.available > 0
+                              ? `Available · ${room.available} slot${room.available === 1 ? '' : 's'}`
+                              : 'Not available · fully occupied'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-3 text-[11px] text-mut">
+                      Occupancy shows availability only — BoardEase never publishes tenant names.
+                    </p>
+                  </>
+                )}
+              </Reveal>
+
               {/* Rules */}
               <Reveal className="mt-10">
                 <h2 className="text-xl font-bold text-navy-800">House rules</h2>
@@ -221,12 +296,10 @@ export default function HouseDetails() {
               <Reveal className="mt-10">
                 <h2 className="text-xl font-bold text-navy-800">Where you'll be</h2>
                 <p className="mt-1 text-sm text-ink">{house.address}</p>
-                <div className="mt-4 overflow-hidden rounded-[18px] border border-slate-200 shadow-card">
-                  <iframe
-                    title="Map"
-                    className="h-[320px] w-full"
-                    loading="lazy"
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${house.lat}%2C${house.lng}`}
+                <div className="mt-4">
+                  <LocationMap
+                    location={{ name: house.name, address: house.address, lat: house.lat, lng: house.lng }}
+                    height={320}
                   />
                 </div>
               </Reveal>
@@ -263,12 +336,7 @@ export default function HouseDetails() {
                     <div key={r.id} className="rounded-[18px] border border-slate-100 bg-white p-5 shadow-card">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
-                          <span
-                            className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white"
-                            style={{ backgroundColor: r.avatarColor }}
-                          >
-                            {r.author.split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
-                          </span>
+                          <Avatar src={r.avatarUrl} name={r.author} color={r.avatarColor} className="h-10 w-10 text-sm" rounded="full" />
                           <div>
                             <p className="text-sm font-bold text-navy-800">{r.author}</p>
                             <p className="text-xs text-mut">{prettyDate(r.date)}</p>
@@ -342,17 +410,46 @@ export default function HouseDetails() {
 
                 <div className="mt-5 space-y-2.5">
                   <button
-                    onClick={() => setContactOpen(true)}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-500 py-3 text-sm font-semibold text-white shadow-[0_10px_24px_rgb(30_115_232/0.35)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-brand-600"
+                    onClick={() => {
+                      if (!user) {
+                        navigate('/login')
+                        return
+                      }
+                      if (user.role !== 'boarder') {
+                        showToast('Only boarder accounts can request a reservation.')
+                        return
+                      }
+                      setReserveOpen(true)
+                    }}
+                    disabled={vacant === 0}
+                    className={cn(
+                      'flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-all duration-300',
+                      vacant === 0
+                        ? 'cursor-not-allowed bg-slate-100 text-mut'
+                        : 'bg-brand-500 text-white shadow-[0_10px_24px_rgb(30_115_232/0.35)] hover:-translate-y-0.5 hover:bg-brand-600',
+                    )}
                   >
-                    <MessageCircle size={16} /> Message landlord
+                    <CalendarClock size={16} /> {vacant === 0 ? 'Fully occupied' : 'Request Reservation'}
                   </button>
-                  <button className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-navy-800 transition hover:border-brand-300 hover:text-brand-500">
+                  <button
+                    onClick={() => setContactOpen(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-navy-800 transition hover:border-mint-300 hover:text-mint-600"
+                  >
+                    <MessageCircle size={16} /> Contact Owner
+                  </button>
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                    <FavoriteButton houseId={house.id} variant="button" />
+                    <CompareButton houseId={house.id} variant="button" />
+                  </div>
+                  <button
+                    onClick={() => showToast("This owner has not published a phone number — send a message instead.")}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-navy-800 transition hover:border-brand-300 hover:text-brand-500"
+                  >
                     <Phone size={16} /> Call landlord
                   </button>
                 </div>
                 <p className="mt-4 text-center text-[11px] text-mut">
-                  You'll pay {house.owner.split(' ')[0]} directly · No booking fees
+                  You'll pay {house.owner.split(' ')[0]} directly · No booking fees · No online payment
                 </p>
               </div>
             </div>
@@ -375,52 +472,9 @@ export default function HouseDetails() {
       </div>
       <Footer />
 
-      {/* Contact modal */}
-      <Modal open={contactOpen} onClose={() => setContactOpen(false)} title={`Message ${house.owner.split(' ')[0]}`}>
-        {sent ? (
-          <div className="flex flex-col items-center py-8 text-center">
-            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-mint-50 text-mint-600">
-              <Send size={22} />
-            </span>
-            <h4 className="mt-4 text-lg font-bold text-navy-800">Message sent!</h4>
-            <p className="mt-1 max-w-xs text-sm text-ink">
-              {house.owner.split(' ')[0]} will get back to you soon. You can also call{' '}
-              <span className="font-semibold text-navy-800">0917 555 0100</span>.
-            </p>
-            <button
-              onClick={() => {
-                setSent(false)
-                setContactOpen(false)
-              }}
-              className="mt-6 rounded-xl bg-navy-800 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-navy-700"
-            >
-              Done
-            </button>
-          </div>
-        ) : (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              setSent(true)
-            }}
-            className="space-y-4"
-          >
-            <p className="text-sm text-ink">Hi! I'm interested in a room at {house.name}. Is it still available?</p>
-            <textarea
-              required
-              rows={4}
-              defaultValue={`Hi ${house.owner.split(' ')[0]}! I'm interested in renting at ${house.name}. When can I schedule a viewing?`}
-              className="w-full rounded-xl border border-slate-200 p-3 text-sm text-navy-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-            />
-            <button
-              type="submit"
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-500 py-3 text-sm font-semibold text-white transition hover:bg-brand-600"
-            >
-              <Send size={15} /> Send message
-            </button>
-          </form>
-        )}
-      </Modal>
+      {/* Contact owner + reservation request (both reuse the shared boarder flows) */}
+      <ContactOwnerModal open={contactOpen} onClose={() => setContactOpen(false)} house={house} />
+      <ReservationModal open={reserveOpen} onClose={() => setReserveOpen(false)} house={house} rooms={rooms} />
     </div>
   )
 }

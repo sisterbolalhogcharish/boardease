@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import { Eye, Plus, Search, Trash2, UserRound, Users } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
-import { EmptyState, Modal, Skeleton, Spinner } from '../../components/ui'
+import { Avatar, EmptyState, Modal, Skeleton, Spinner } from '../../components/ui'
 import { useAddBoarder, useBoarders, useRemoveBoarder, useRooms } from '../../lib/hooks'
 import { cn, peso, prettyDate } from '../../lib/utils'
 import type { Boarder } from '../../server/types'
@@ -129,9 +129,7 @@ export default function Boarders() {
                   >
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white" style={{ backgroundColor: b.avatarColor }}>
-                          {b.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
-                        </span>
+                        <Avatar src={b.avatarUrl} name={b.name} color={b.avatarColor} className="h-9 w-9 text-xs" rounded="full" />
                         <div>
                           <p className="font-bold text-navy-800">{b.name}</p>
                           <p className="text-xs text-mut">
@@ -172,9 +170,7 @@ export default function Boarders() {
         {viewing && (
           <div className="grid gap-6 sm:grid-cols-[auto_1fr]">
             <div className="flex flex-col items-center gap-3 rounded-2xl bg-surface p-6">
-              <span className="flex h-20 w-20 items-center justify-center rounded-full text-2xl font-bold text-white" style={{ backgroundColor: viewing.avatarColor }}>
-                {viewing.name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
-              </span>
+              <Avatar src={viewing.avatarUrl} name={viewing.name} color={viewing.avatarColor} className="h-20 w-20 text-2xl" rounded="full" />
               <p className="text-center font-bold text-navy-800">{viewing.name}</p>
               <span className={cn('rounded-full px-2.5 py-1 text-[11px] font-bold', STATUS_STYLE[viewing.status].cls)}>{STATUS_STYLE[viewing.status].label}</span>
               <div className="mt-2 w-full space-y-1 rounded-xl bg-white p-3 text-center">

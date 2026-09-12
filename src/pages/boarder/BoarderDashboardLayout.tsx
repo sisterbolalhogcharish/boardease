@@ -1,38 +1,59 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Bell,
+  ArrowLeftRight,
   Building2,
+  CalendarClock,
   CreditCard,
+  Heart,
   Home,
-  LogOut,
   Menu,
+  MessageCircle,
   Star,
 } from 'lucide-react'
-import { useState } from 'react'
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useState, type ComponentType } from 'react'
+import { Link, Outlet, useLocation } from 'react-router-dom'
+import NotificationBell from '../../components/boarder/NotificationBell'
+import ProfileMenu from '../../components/boarder/ProfileMenu'
+import { Avatar } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
+import { useCompare } from '../../lib/compare'
+import { useConversations, useFavorites, useReservations } from '../../lib/hooks'
 import { cn } from '../../lib/utils'
 
-const NAV = [
-  { path: '/boarder', label: 'My Home', icon: Home, end: true },
-  { path: '/boarder/payments', label: 'My Payments', icon: CreditCard },
-  { path: '/boarder/reviews', label: 'Reviews', icon: Star },
-  { path: '/boarder/browse', label: 'Browse Houses', icon: Building2 },
-]
+interface NavItem {
+  path: string
+  label: string
+  icon: ComponentType<{ size?: number | string; className?: string }>
+  end?: boolean
+  badge?: number
+}
 
 export default function BoarderDashboardLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const { pathname } = useLocation()
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
+  const { user } = useAuth()
+  const compare = useCompare()
+  const userId = user?.id?.toString()
+
+  const { data: favorites } = useFavorites(userId)
+  const { data: conversations } = useConversations(userId)
+  const { data: reservations } = useReservations(userId)
+
+  const unreadMessages = (conversations ?? []).reduce((sum, c) => sum + c.unreadCount, 0)
+  const pendingReservations = (reservations ?? []).filter((r) => r.status === 'pending').length
+
+  const NAV: NavItem[] = [
+    { path: '/boarder', label: 'My Home', icon: Home, end: true },
+    { path: '/boarder/browse', label: 'Browse Houses', icon: Building2 },
+    { path: '/boarder/favorites', label: 'Favorites', icon: Heart, badge: favorites?.length },
+    { path: '/boarder/compare', label: 'Compare', icon: ArrowLeftRight, badge: compare.count || undefined },
+    { path: '/boarder/reservations', label: 'My Reservations', icon: CalendarClock, badge: pendingReservations || undefined },
+    { path: '/boarder/payments', label: 'My Payments', icon: CreditCard },
+    { path: '/boarder/reviews', label: 'My Reviews', icon: Star },
+    { path: '/boarder/messages', label: 'Messages', icon: MessageCircle, badge: unreadMessages || undefined },
+  ]
 
   const current = NAV.find((n) => (n.end ? pathname === n.path : pathname.startsWith(n.path))) ?? NAV[0]
-
-  const handleLogout = () => {
-    logout()
-    navigate('/')
-  }
-
   const closeMenu = () => setMobileOpen(false)
 
   const Sidebar = (
@@ -44,7 +65,7 @@ export default function BoarderDashboardLayout() {
         <p className="mt-2 text-[10px] font-medium tracking-wide text-navy-300">Boarder Portal</p>
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2" aria-label="Boarder navigation">
         {NAV.map((item) => {
           const active = item.end ? pathname === item.path : pathname.startsWith(item.path)
           return (
@@ -52,6 +73,7 @@ export default function BoarderDashboardLayout() {
               key={item.path}
               to={item.path}
               onClick={closeMenu}
+              aria-current={active ? 'page' : undefined}
               className={cn(
                 'group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200',
                 active
@@ -60,7 +82,17 @@ export default function BoarderDashboardLayout() {
               )}
             >
               <item.icon size={18} className={active ? '' : 'text-navy-300 group-hover:text-mint-300'} />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {item.badge ? (
+                <span
+                  className={cn(
+                    'flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold',
+                    active ? 'bg-white/25 text-white' : 'bg-mint-400/20 text-mint-300',
+                  )}
+                >
+                  {item.badge > 9 ? '9+' : item.badge}
+                </span>
+              ) : null}
             </Link>
           )
         })}
@@ -68,20 +100,17 @@ export default function BoarderDashboardLayout() {
 
       <div className="border-t border-white/10 p-4">
         <div className="flex items-center gap-3 rounded-xl bg-white/5 p-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-mint-400 to-brand-500 text-sm font-bold text-white">
-            {user?.name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
-          </span>
+          <Avatar
+            src={user?.avatarUrl}
+            name={user?.name}
+            color={user?.avatarColor}
+            className="h-10 w-10 text-sm"
+            rounded="full"
+          />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-bold text-white">{user?.name}</p>
             <p className="truncate text-[11px] text-navy-300">{user?.email}</p>
           </div>
-          <button
-            onClick={handleLogout}
-            className="rounded-lg p-2 text-navy-300 transition hover:bg-white/10 hover:text-white"
-            aria-label="Log out"
-          >
-            <LogOut size={16} />
-          </button>
         </div>
       </div>
     </div>
@@ -130,27 +159,21 @@ export default function BoarderDashboardLayout() {
             </button>
             <div>
               <h1 className="text-lg font-bold tracking-tight text-navy-800">{current.label}</h1>
-              <p className="hidden text-xs text-mut sm:block">Welcome back, {user?.name.split(' ')[0]}!</p>
+              <p className="hidden text-xs text-mut sm:block">
+                Welcome back, {user?.name?.split(' ')[0]}
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <button className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-navy-700 transition hover:border-mint-400 hover:text-mint-600" aria-label="Notifications">
-              <Bell size={18} />
-            </button>
+            <NotificationBell userId={userId} />
             <Link
               to="/"
               className="hidden items-center gap-1.5 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-navy-700 transition hover:border-mint-400 hover:text-mint-600 sm:inline-flex"
             >
-              View public site
+              View public
             </Link>
-            <button
-              onClick={handleLogout}
-              className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-mint-400 to-brand-500 text-sm font-bold text-white"
-              aria-label="Profile"
-            >
-              {user?.name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
-            </button>
+            <ProfileMenu />
           </div>
         </header>
 

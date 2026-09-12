@@ -4,9 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"node server/index.js\" \"vite\"",
+    "dev": "concurrently \"node --watch server/index.js\" \"vite\"",
     "dev:client": "vite",
     "dev:server": "node server/index.js",
+    "dev:server:watch": "node --watch server/index.js",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",

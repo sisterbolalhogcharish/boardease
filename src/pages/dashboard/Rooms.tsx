@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import { BedDouble, DoorOpen, Pencil, Plus, Snowflake, Trash2, Users, X } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { EmptyState, Modal, Skeleton, Spinner } from '../../components/ui'
+import { Avatar, EmptyState, Modal, Skeleton, Spinner } from '../../components/ui'
 import { useAddRoom, useBoarders, useDeleteRoom, useRooms, useUpdateRoom } from '../../lib/hooks'
 import { cn, peso } from '../../lib/utils'
 import type { Gender, Room, RoomType } from '../../server/types'
@@ -139,13 +139,8 @@ export default function Rooms() {
                 <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
                   <div className="flex -space-x-2">
                     {tenants.slice(0, 4).map((t) => (
-                      <span
-                        key={t.id}
-                        title={t.name}
-                        className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[9px] font-bold text-white"
-                        style={{ backgroundColor: t.avatarColor }}
-                      >
-                        {t.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
+                      <span key={t.id} title={t.name} className="rounded-full border-2 border-white">
+                        <Avatar src={t.avatarUrl} name={t.name} color={t.avatarColor} className="h-7 w-7 text-[9px]" rounded="full" />
                       </span>
                     ))}
                     {room.occupied - tenants.slice(0, 4).length > 0 && (
@@ -293,9 +288,7 @@ export default function Rooms() {
             )}
             {occupants(viewing.id).map((b) => (
               <div key={b.id} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white" style={{ backgroundColor: b.avatarColor }}>
-                  {b.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
-                </span>
+                <Avatar src={b.avatarUrl} name={b.name} color={b.avatarColor} className="h-10 w-10 text-sm" rounded="full" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold text-navy-800">{b.name}</p>
                   <p className="text-xs text-ink">{b.school} · {b.course}</p>

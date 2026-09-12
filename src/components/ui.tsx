@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { Building2, Loader2, Star, X } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
-import { cn } from '../lib/utils'
+import { cn, initials } from '../lib/utils'
 
 /* ------------------------------------------------------------------ */
 /*  Status badges                                                      */
@@ -86,11 +86,19 @@ export function Reveal({
 /* ------------------------------------------------------------------ */
 /*  Image with graceful fallback                                       */
 /* ------------------------------------------------------------------ */
-export function HouseImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
+export function HouseImage({ src, alt, className }: { src?: string; alt: string; className?: string }) {
   const [failed, setFailed] = useState(false)
-  if (failed)
+
+  // A changed image URL deserves a fresh attempt at loading.
+  useEffect(() => setFailed(false), [src])
+
+  if (failed || !src)
     return (
-      <div className={cn('flex items-center justify-center bg-gradient-to-br from-navy-100 via-brand-100 to-mint-100', className)}>
+      <div
+        className={cn('flex items-center justify-center bg-gradient-to-br from-navy-100 via-brand-100 to-mint-100', className)}
+        role="img"
+        aria-label={alt}
+      >
         <Building2 className="h-10 w-10 text-navy-300" />
       </div>
     )
@@ -102,6 +110,55 @@ export function HouseImage({ src, alt, className }: { src: string; alt: string; 
       onError={() => setFailed(true)}
       className={cn('object-cover', className)}
     />
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Avatar — uploaded photo when present, initials otherwise            */
+/* ------------------------------------------------------------------ */
+/**
+ * Account avatar. Renders the boarder's uploaded profile photo when there is
+ * one, and falls back to coloured initials exactly like the old markup, so
+ * every existing call site keeps its layout and just gains the photo.
+ */
+export function Avatar({
+  src,
+  name,
+  color = '#1E73E8',
+  className,
+  rounded = 'full',
+}: {
+  src?: string | null
+  name?: string
+  color?: string
+  /** Sizing + text-size classes, e.g. "h-10 w-10 text-sm". */
+  className?: string
+  rounded?: 'full' | 'xl' | '2xl'
+}) {
+  const [failed, setFailed] = useState(false)
+  useEffect(() => setFailed(false), [src])
+
+  const base = cn(
+    'flex shrink-0 items-center justify-center font-bold text-white',
+    rounded === 'full' ? 'rounded-full' : rounded === 'xl' ? 'rounded-xl' : 'rounded-2xl',
+    className,
+  )
+
+  if (src && !failed) {
+    return (
+      <img
+        src={src}
+        alt={name ? `${name} profile photo` : 'Profile photo'}
+        onError={() => setFailed(true)}
+        className={cn(base, 'object-cover')}
+      />
+    )
+  }
+
+  return (
+    <span className={base} style={{ backgroundColor: color }} aria-hidden={name ? undefined : true}>
+      {name ? initials(name) : '?'}
+    </span>
   )
 }
 

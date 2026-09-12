@@ -1,4 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { CompareDock } from './components/boarder/HouseActions'
+import VirtualAssistant from './components/boarder/VirtualAssistant'
 import { useAuth } from './lib/auth'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
@@ -15,11 +17,18 @@ import Reviews from './pages/dashboard/Reviews'
 import Subscription from './pages/dashboard/Subscription'
 import Settings from './pages/dashboard/Settings'
 import AIAssistant from './pages/dashboard/AIAssistant'
+import OwnerReservations from './pages/dashboard/Reservations'
+import OwnerMessages from './pages/dashboard/Messages'
 import BoarderDashboardLayout from './pages/boarder/BoarderDashboardLayout'
 import BoarderHome from './pages/boarder/BoarderHome'
 import BoarderPayments from './pages/boarder/BoarderPayments'
 import BoarderReviews from './pages/boarder/BoarderReviews'
 import BoarderBrowse from './pages/boarder/BoarderBrowse'
+import BoarderFavorites from './pages/boarder/BoarderFavorites'
+import BoarderCompare from './pages/boarder/BoarderCompare'
+import BoarderReservations from './pages/boarder/BoarderReservations'
+import BoarderMessages from './pages/boarder/BoarderMessages'
+import BoarderProfile from './pages/boarder/BoarderProfile'
 
 function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode; requiredRole?: 'landlord' | 'boarder' }) {
   const { user } = useAuth()
@@ -32,8 +41,9 @@ function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode;
 
 export default function App() {
   return (
-    <Routes>
-      {/* Public routes */}
+    <>
+      <Routes>
+        {/* Public routes */}
       <Route path="/" element={<Landing />} />
       <Route path="/search" element={<Search />} />
       <Route path="/houses/:id" element={<HouseDetails />} />
@@ -51,6 +61,8 @@ export default function App() {
         <Route index element={<Overview />} />
         <Route path="rooms" element={<Rooms />} />
         <Route path="boarders" element={<Boarders />} />
+        <Route path="reservations" element={<OwnerReservations />} />
+        <Route path="messages" element={<OwnerMessages />} />
         <Route path="payments" element={<Payments />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="reports" element={<Reports />} />
@@ -70,12 +82,22 @@ export default function App() {
         }
       >
         <Route index element={<BoarderHome />} />
+        <Route path="browse" element={<BoarderBrowse />} />
+        <Route path="favorites" element={<BoarderFavorites />} />
+        <Route path="compare" element={<BoarderCompare />} />
+        <Route path="reservations" element={<BoarderReservations />} />
         <Route path="payments" element={<BoarderPayments />} />
         <Route path="reviews" element={<BoarderReviews />} />
-        <Route path="browse" element={<BoarderBrowse />} />
+        <Route path="messages" element={<BoarderMessages />} />
+        <Route path="profile" element={<BoarderProfile />} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+
+      {/* Global boarder/discovery helpers */}
+      <CompareDock />
+      <VirtualAssistant />
+    </>
   )
 }

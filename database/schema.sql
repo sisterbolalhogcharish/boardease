@@ -19,6 +19,7 @@ CREATE TABLE users (
     name        VARCHAR(255) NOT NULL,
     phone       VARCHAR(50)  DEFAULT NULL,
     avatar_color VARCHAR(7)  DEFAULT '#1E73E8',
+    avatar_url  MEDIUMTEXT   DEFAULT NULL,        -- uploaded profile photo (data URL)
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;

@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import { MessageSquareReply, Star } from 'lucide-react'
 import { useState } from 'react'
-import { Rating, Spinner } from '../../components/ui'
+import { Avatar, Rating, Spinner } from '../../components/ui'
 import { useReviews } from '../../lib/hooks'
 import { cn, prettyDate } from '../../lib/utils'
 import type { ReviewRating } from '../../server/types'
@@ -112,9 +112,7 @@ export default function Reviews() {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white" style={{ backgroundColor: r.avatarColor }}>
-                  {r.author.split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
-                </span>
+                <Avatar src={r.avatarUrl} name={r.author} color={r.avatarColor} className="h-10 w-10 text-sm" rounded="full" />
                 <div>
                   <p className="text-sm font-bold text-navy-800">{r.author}</p>
                   <p className="text-xs text-mut">{prettyDate(r.date)}</p>

@@ -11,13 +11,33 @@ import type {
 const API_BASE = '/api'
 
 async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  })
+  let res
+  try {
+    res = await fetch(`${API_BASE}${url}`, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    })
+  } catch (err: any) {
+    const msg = err?.message?.toLowerCase() ?? ''
+    if (msg.includes('failed to fetch') || msg.includes('connection') || msg.includes('network')) {
+      throw new Error('The API server is not running. Start it with npm run dev and try again.')
+    }
+    throw new Error('Network error. Please check your connection and try again.')
+  }
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }))
-    throw new Error(err.error || res.statusText)
+    // Prefer the JSON `error` the API sends. Some failures (a route that is not
+    // registered on the running server, a proxy error) answer with HTML, so the
+    // raw `res.json()` would throw and mask the real reason.
+    const body = (await res.json().catch(() => null)) as { error?: unknown } | null
+    if (body && typeof body.error === 'string') throw new Error(body.error)
+    if (res.status === 404) {
+      throw new Error('This feature is not available on the running API server yet. Restart it (npm run dev) and try again.')
+    }
+    const statusText = res.statusText || '';
+    if (statusText.toLowerCase().includes('gateway')) {
+      throw new Error('The server is having trouble right now. Please try again in a moment or restart the API server (npm run dev).')
+    }
+    throw new Error(res.statusText || `Request failed (${res.status})`)
   }
   return res.json()
 }
@@ -26,6 +46,8 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
 /*  Search                                                             */
 /* ------------------------------------------------------------------ */
 export interface SearchFilters {
+  /** Free-text search across public boarding-house information. */
+  q?: string
   municipality?: string
   barangay?: string
   school?: string
@@ -50,11 +72,14 @@ export type SortKey = 'recommended' | 'price-asc' | 'price-desc' | 'rating' | 'a
 export interface HouseCard extends BoardingHouse {
   status: string
   vacant: number
+  landlordId?: string
+  ownerUserId?: string
 }
 
 export async function getHouses(filters?: SearchFilters, sort: SortKey = 'recommended'): Promise<HouseCard[]> {
   const params = new URLSearchParams()
   if (filters) {
+    if (filters.q && filters.q.trim()) params.set('q', filters.q.trim())
     if (filters.municipality) params.set('municipality', filters.municipality)
     if (filters.barangay) params.set('barangay', filters.barangay)
     if (filters.school) params.set('school', filters.school)
@@ -239,12 +264,17 @@ export async function getAnalytics(): Promise<AnalyticsData> {
 /* ------------------------------------------------------------------ */
 /*  Notifications / Subscription                                       */
 /* ------------------------------------------------------------------ */
-export async function getNotifications() {
-  return fetchJSON<any[]>('/notifications')
+export async function getNotifications(userId?: string) {
+  const qs = userId ? `?userId=${encodeURIComponent(userId)}` : ''
+  return fetchJSON<AppNotification[]>(`/notifications${qs}`)
 }
 
-export async function markNotificationsRead() {
-  await fetchJSON('/notifications/read', { method: 'PUT', body: JSON.stringify({}) })
+export async function markNotificationsRead(userId?: string) {
+  await fetchJSON('/notifications/read', { method: 'PUT', body: JSON.stringify({ userId }) })
+}
+
+export async function markNotificationRead(id: string, userId: string) {
+  await fetchJSON(`/notifications/${id}/read`, { method: 'PUT', body: JSON.stringify({ userId }) })
 }
 
 export async function getSubscription(): Promise<Subscription> {
@@ -259,6 +289,317 @@ export async function loginAPI(email: string, password: string) {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   })
+}
+
+export interface RegisterInput {
+  name: string
+  email: string
+  password: string
+  phone?: string
+  role?: 'boarder'
+}
+
+export async function registerAPI(input: RegisterInput) {
+  return fetchJSON<any>('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ ...input, role: input.role ?? 'boarder' }),
+  })
+}
+
+/* ------------------------------------------------------------------ */
+/*  Boarder — shared DTOs                                              */
+/* ------------------------------------------------------------------ */
+export interface AppNotification {
+  id: string
+  type: string
+  title: string
+  message: string
+  link: string | null
+  date: string
+  read: boolean
+}
+
+export interface PublicRoom {
+  id: string
+  roomNo: string
+  type: 'bedspace' | 'single' | 'double' | 'studio'
+  capacity: number
+  occupied: number
+  available: number
+  monthlyRent: number
+  gender: string
+  aircon: boolean
+  status: 'available' | 'full'
+}
+
+export interface Accommodation {
+  rentalId: string
+  houseId: string
+  houseName: string
+  address: string
+  municipality: string
+  barangay: string
+  roomId: string
+  roomNo: string
+  roomType: string
+  roomGender: string
+  roomCapacity: number
+  monthlyRent: number
+  deposit: number
+  advance: number
+  moveInDate: string
+  contractEnd: string
+  rentalStatus: string
+  notes: string
+  curfew: string
+  visitorPolicy: string
+  description: string
+  lat: number
+  lng: number
+  amenities: string[]
+  owner: string
+  ownerPhone: string
+  nextPayment: {
+    month: string
+    label: string
+    amount: number
+    dueDate: string
+    status: PaymentStatus
+  } | null
+}
+
+export interface BoarderPayment {
+  id: string
+  month: string
+  label: string
+  amount: number
+  dueDate: string
+  paidDate: string | null
+  status: PaymentStatus
+  method: string | null
+  reference: string | null
+}
+
+export interface BoarderReview {
+  id: string
+  houseId: string
+  houseName: string
+  houseImage: string
+  author: string
+  avatarColor: string
+  /** Uploaded profile photo (data URL) — empty when the boarder has none. */
+  avatarUrl?: string
+  rating: number
+  categories: {
+    cleanliness: number
+    safety: number
+    comfort: number
+    internet: number
+    owner: number
+    location: number
+    value: number
+  }
+  comment: string
+  date: string
+  reply: string | null
+}
+
+export interface FavoriteItem {
+  favoriteAt: string
+  house: HouseCard
+}
+
+export type ReservationStatus = 'pending' | 'approved' | 'declined' | 'cancelled'
+
+export interface Reservation {
+  id: string
+  houseId: string
+  houseName: string
+  houseImage: string
+  municipality: string
+  barangay: string
+  roomId: string | null
+  roomNo: string | null
+  roomType: string | null
+  monthlyRent: number
+  moveInDate: string
+  durationMonths: number | null
+  message: string | null
+  status: ReservationStatus
+  ownerResponse: string | null
+  createdAt: string
+  decidedAt: string | null
+  boarderName: string
+  boarderPhone: string
+  accommodationAttached?: boolean
+}
+
+export interface Conversation {
+  id: string
+  houseId: string
+  houseName: string
+  houseImage: string
+  boarderId: string
+  ownerUserId: string
+  boarderName: string
+  ownerName: string
+  title: string
+  viewerIsBoarder: boolean
+  lastMessage: string
+  lastMessageAt: string | null
+  unreadCount: number
+}
+
+export interface ChatMessage {
+  id: string
+  conversationId: string
+  senderId: string
+  mine: boolean
+  body: string
+  isRead: boolean
+  createdAt: string
+}
+
+export interface ConversationThread {
+  conversation: Conversation
+  messages: ChatMessage[]
+}
+
+export interface BoarderProfile {
+  id: string
+  name: string
+  email: string
+  phone: string
+  avatarColor: string
+  avatarUrl: string
+  role: string
+  memberSince: string
+  age: number | null
+  gender: string
+  school: string
+  course: string
+  guardianName: string
+  guardianPhone: string
+  address: string
+}
+
+/* ------------------------------------------------------------------ */
+/*  Boarder — accommodation, payments, reviews                         */
+/* ------------------------------------------------------------------ */
+export async function getAccommodation(userId: string): Promise<Accommodation | null> {
+  return fetchJSON<Accommodation | null>(`/boarder/accommodation?userId=${encodeURIComponent(userId)}`)
+}
+
+export async function getBoarderPayments(userId: string): Promise<BoarderPayment[]> {
+  return fetchJSON<BoarderPayment[]>(`/boarder/payments?userId=${encodeURIComponent(userId)}`)
+}
+
+export async function getBoarderReviews(userId: string): Promise<BoarderReview[]> {
+  return fetchJSON<BoarderReview[]>(`/boarder/reviews?userId=${encodeURIComponent(userId)}`)
+}
+
+export async function saveReview(input: {
+  userId: string
+  houseId: string
+  rating: number
+  comment: string
+  categories?: Record<string, number>
+}): Promise<{ ok: boolean; updated: boolean }> {
+  return fetchJSON<{ ok: boolean; updated: boolean }>('/boarder/reviews', { method: 'POST', body: JSON.stringify(input) })
+}
+
+export async function getBoarderProfile(userId: string): Promise<BoarderProfile> {
+  return fetchJSON<BoarderProfile>(`/boarder/profile?userId=${encodeURIComponent(userId)}`)
+}
+
+export async function updateBoarderProfile(patch: Partial<BoarderProfile> & { userId: string }): Promise<{ ok: boolean }> {
+  return fetchJSON<{ ok: boolean }>('/boarder/profile', { method: 'PUT', body: JSON.stringify(patch) })
+}
+
+/* ------------------------------------------------------------------ */
+/*  Boarder — favorites                                                */
+/* ------------------------------------------------------------------ */
+export async function getFavorites(userId: string): Promise<FavoriteItem[]> {
+  return fetchJSON<FavoriteItem[]>(`/favorites?userId=${encodeURIComponent(userId)}`)
+}
+
+export async function addFavorite(userId: string, houseId: string): Promise<{ ok: boolean }> {
+  return fetchJSON<{ ok: boolean }>('/favorites', { method: 'POST', body: JSON.stringify({ userId, houseId }) })
+}
+
+export async function removeFavorite(userId: string, houseId: string): Promise<{ ok: boolean }> {
+  return fetchJSON<{ ok: boolean }>(`/favorites/${houseId}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' })
+}
+
+/* ------------------------------------------------------------------ */
+/*  Boarder — public rooms                                             */
+/* ------------------------------------------------------------------ */
+export async function getPublicRooms(houseId: string): Promise<PublicRoom[]> {
+  return fetchJSON<PublicRoom[]>(`/houses/${houseId}/rooms`)
+}
+
+/* ------------------------------------------------------------------ */
+/*  Boarder — reservations                                             */
+/* ------------------------------------------------------------------ */
+export async function getReservations(userId: string): Promise<Reservation[]> {
+  return fetchJSON<Reservation[]>(`/reservations?userId=${encodeURIComponent(userId)}`)
+}
+
+export async function getOwnerReservations(ownerId: string): Promise<Reservation[]> {
+  return fetchJSON<Reservation[]>(`/reservations?ownerId=${encodeURIComponent(ownerId)}`)
+}
+
+export async function createReservation(input: {
+  userId: string
+  houseId: string
+  roomId?: string | null
+  moveInDate: string
+  durationMonths?: number | null
+  message?: string
+}): Promise<Reservation> {
+  return fetchJSON<Reservation>('/reservations', { method: 'POST', body: JSON.stringify(input) })
+}
+
+export async function cancelReservation(id: string, userId: string): Promise<Reservation> {
+  return fetchJSON<Reservation>(`/reservations/${id}/cancel`, { method: 'PUT', body: JSON.stringify({ userId }) })
+}
+
+export async function respondToReservation(
+  id: string,
+  ownerId: string,
+  status: 'approved' | 'declined',
+  response?: string,
+): Promise<Reservation> {
+  return fetchJSON<Reservation>(`/reservations/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ ownerId, status, response }),
+  })
+}
+
+/* ------------------------------------------------------------------ */
+/*  Boarder — messages                                                 */
+/* ------------------------------------------------------------------ */
+export async function getConversations(userId: string): Promise<Conversation[]> {
+  return fetchJSON<Conversation[]>(`/conversations?userId=${encodeURIComponent(userId)}`)
+}
+
+export async function startConversation(input: { userId: string; houseId: string; body?: string }): Promise<Conversation> {
+  return fetchJSON<Conversation>('/conversations', { method: 'POST', body: JSON.stringify(input) })
+}
+
+export async function getConversationThread(id: string, userId: string): Promise<ConversationThread> {
+  return fetchJSON<ConversationThread>(`/conversations/${id}/messages?userId=${encodeURIComponent(userId)}`)
+}
+
+export async function sendMessage(id: string, userId: string, body: string): Promise<ChatMessage> {
+  return fetchJSON<ChatMessage>(`/conversations/${id}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ userId, body }),
+  })
+}
+
+export async function markConversationRead(id: string, userId: string): Promise<{ ok: boolean }> {
+  return fetchJSON<{ ok: boolean }>(`/conversations/${id}/read`, { method: 'PUT', body: JSON.stringify({ userId }) })
 }
 
 /* ------------------------------------------------------------------ */

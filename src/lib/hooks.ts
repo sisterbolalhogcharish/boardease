@@ -60,8 +60,89 @@ export function useRoomStatus() {
   return useQuery({ queryKey: ['room-status'], queryFn: api.getRooms })
 }
 
-export function useNotifications() {
-  return useQuery({ queryKey: ['notifications'], queryFn: api.getNotifications })
+export function useNotifications(userId?: string) {
+  return useQuery({ queryKey: ['notifications', userId], queryFn: () => api.getNotifications(userId) })
+}
+
+/* ---------------------- Boarder-side queries ---------------------- */
+export function useAccommodation(userId?: string) {
+  return useQuery({
+    queryKey: ['accommodation', userId],
+    queryFn: () => api.getAccommodation(userId!),
+    enabled: !!userId,
+  })
+}
+
+export function useBoarderPayments(userId?: string) {
+  return useQuery({
+    queryKey: ['boarder-payments', userId],
+    queryFn: () => api.getBoarderPayments(userId!),
+    enabled: !!userId,
+  })
+}
+
+export function useBoarderReviews(userId?: string) {
+  return useQuery({
+    queryKey: ['boarder-reviews', userId],
+    queryFn: () => api.getBoarderReviews(userId!),
+    enabled: !!userId,
+  })
+}
+
+export function useBoarderProfile(userId?: string) {
+  return useQuery({
+    queryKey: ['boarder-profile', userId],
+    queryFn: () => api.getBoarderProfile(userId!),
+    enabled: !!userId,
+  })
+}
+
+export function useFavorites(userId?: string) {
+  return useQuery({
+    queryKey: ['favorites', userId],
+    queryFn: () => api.getFavorites(userId!),
+    enabled: !!userId,
+  })
+}
+
+export function usePublicRooms(houseId?: string) {
+  return useQuery({
+    queryKey: ['public-rooms', houseId],
+    queryFn: () => api.getPublicRooms(houseId!),
+    enabled: !!houseId,
+  })
+}
+
+export function useReservations(userId?: string) {
+  return useQuery({
+    queryKey: ['reservations', userId],
+    queryFn: () => api.getReservations(userId!),
+    enabled: !!userId,
+  })
+}
+
+export function useOwnerReservations(ownerId?: string) {
+  return useQuery({
+    queryKey: ['owner-reservations', ownerId],
+    queryFn: () => api.getOwnerReservations(ownerId!),
+    enabled: !!ownerId,
+  })
+}
+
+export function useConversations(userId?: string) {
+  return useQuery({
+    queryKey: ['conversations', userId],
+    queryFn: () => api.getConversations(userId!),
+    enabled: !!userId,
+  })
+}
+
+export function useConversationThread(id?: string, userId?: string) {
+  return useQuery({
+    queryKey: ['conversation', id, userId],
+    queryFn: () => api.getConversationThread(id!, userId!),
+    enabled: !!id && !!userId,
+  })
 }
 
 export function useSubscription() {
@@ -170,7 +251,119 @@ export function useNeedsAttention() {
 export function useMarkNotificationsRead() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: api.markNotificationsRead,
+    mutationFn: (userId?: string) => api.markNotificationsRead(userId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  })
+}
+
+/* --------------------- Boarder-side mutations --------------------- */
+export function useMarkNotificationRead() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, userId }: { id: string; userId: string }) => api.markNotificationRead(id, userId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  })
+}
+
+export function useToggleFavorite(userId?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ houseId, favorited }: { houseId: string; favorited: boolean }) =>
+      favorited ? api.removeFavorite(userId!, houseId) : api.addFavorite(userId!, houseId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['favorites', userId] })
+      qc.invalidateQueries({ queryKey: ['favorites'] })
+    },
+  })
+}
+
+export function useSaveReview(userId?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Parameters<typeof api.saveReview>[0]) => api.saveReview(input),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['boarder-reviews', userId] })
+      qc.invalidateQueries({ queryKey: ['reviews', variables.houseId] })
+      qc.invalidateQueries({ queryKey: ['house', variables.houseId] })
+      qc.invalidateQueries({ queryKey: ['houses'] })
+    },
+  })
+}
+
+export function useUpdateProfile(userId?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (patch: Parameters<typeof api.updateBoarderProfile>[0]) => api.updateBoarderProfile(patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['boarder-profile', userId] }),
+  })
+}
+
+export function useCreateReservation(userId?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Parameters<typeof api.createReservation>[0]) => api.createReservation(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['reservations', userId] })
+      qc.invalidateQueries({ queryKey: ['notifications'] })
+    },
+  })
+}
+
+export function useCancelReservation(userId?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.cancelReservation(id, userId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['reservations', userId] })
+      qc.invalidateQueries({ queryKey: ['notifications'] })
+    },
+  })
+}
+
+export function useRespondToReservation(ownerId?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, status, response }: { id: string; status: 'approved' | 'declined'; response?: string }) =>
+      api.respondToReservation(id, ownerId!, status, response),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['owner-reservations', ownerId] })
+      qc.invalidateQueries({ queryKey: ['accommodation'] })
+      qc.invalidateQueries({ queryKey: ['reservations'] })
+      qc.invalidateQueries({ queryKey: ['notifications'] })
+      qc.invalidateQueries({ queryKey: ['rooms'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+}
+
+export function useStartConversation(userId?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Parameters<typeof api.startConversation>[0]) => api.startConversation(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['conversations', userId] }),
+  })
+}
+
+export function useSendMessage(userId?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ conversationId, body }: { conversationId: string; body: string }) =>
+      api.sendMessage(conversationId, userId!, body),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['conversation', variables.conversationId, userId] })
+      qc.invalidateQueries({ queryKey: ['conversations', userId] })
+      qc.invalidateQueries({ queryKey: ['notifications'] })
+    },
+  })
+}
+
+export function useMarkConversationRead(userId?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (conversationId: string) => api.markConversationRead(conversationId, userId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['conversations', userId] })
+      qc.invalidateQueries({ queryKey: ['notifications'] })
+    },
   })
 }
