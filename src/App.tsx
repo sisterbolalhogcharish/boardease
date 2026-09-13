@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { CompareDock } from './components/boarder/HouseActions'
-import VirtualAssistant from './components/boarder/VirtualAssistant'
 import { useAuth } from './lib/auth'
+import LandlordSignup from './pages/LandlordSignup'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Search from './pages/Search'
@@ -54,6 +54,7 @@ export default function App() {
       <Route path="/search" element={<Search />} />
       <Route path="/houses/:id" element={<HouseDetails />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/landlord/signup" element={<LandlordSignup />} />
 
       {/* Landlord dashboard — protected */}
       <Route

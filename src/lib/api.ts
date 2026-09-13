@@ -307,6 +307,33 @@ export async function registerAPI(input: RegisterInput) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Landlord sign-up                                                   */
+/* ------------------------------------------------------------------ */
+export interface LandlordDoc {
+  docType: 'valid_id' | 'business_permit' | 'sec_registration' | 'other' | 'legal_documents'
+  docName: string
+  docUrl: string
+}
+
+export interface LandlordRegisterInput {
+  email: string
+  password: string
+  fullName: string
+  mobileNumber: string
+  locationPref: string
+  locationLat?: number
+  locationLng?: number
+  documents: LandlordDoc[]
+}
+
+export async function registerLandlordAPI(input: LandlordRegisterInput) {
+  return fetchJSON<any>('/auth/landlord-register', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+/* ------------------------------------------------------------------ */
 /*  Boarder — shared DTOs                                              */
 /* ------------------------------------------------------------------ */
 export interface AppNotification {

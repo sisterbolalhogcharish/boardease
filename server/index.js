@@ -9,7 +9,7 @@ const app = express()
 const PORT = process.env.SERVER_PORT || 3001
 
 app.use(cors())
-app.use(express.json())
+app.use(express.json({ limit: '15mb' }))
 
 /* ================================================================
    SHARED HELPERS
@@ -211,6 +211,105 @@ app.post('/api/auth/register', async (req, res) => {
     })
   } catch (err) {
     console.error('Register error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+/* ================================================================
+   LANDLORD SIGN UP (self-registration with location & documents)
+   ================================================================ */
+app.post('/api/auth/landlord-register', async (req, res) => {
+  try {
+    const { email, password, fullName, mobileNumber, locationPref, locationLat, locationLng, documents } = req.body
+
+    // --- Validation ---
+    if (!email || !password || !fullName) {
+      return res.status(400).json({ error: 'Full name, email and password are required' })
+    }
+    if (!String(fullName).trim()) {
+      return res.status(400).json({ error: 'Full name is required' })
+    }
+    if (String(password).length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' })
+    }
+    const cleanEmail = String(email).trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({ error: 'Please enter a valid email address' })
+    }
+    if (!mobileNumber || String(mobileNumber).trim().length < 7) {
+      return res.status(400).json({ error: 'A valid mobile number is required' })
+    }
+    if (!locationPref || String(locationPref).trim().length < 5) {
+      return res.status(400).json({ error: 'Please select a location on the map' })
+    }
+
+    const ALLOWED_DOC_TYPES = new Set(['valid_id', 'business_permit', 'sec_registration', 'other', 'legal_documents'])
+    const isImageDataUrl = (url) =>
+      typeof url === 'string' && /^data:image\/(jpeg|jpg|png)/i.test(url.trim())
+
+    const docs = Array.isArray(documents) ? documents : []
+    const preparedDocs = docs.filter(
+      (doc) =>
+        doc &&
+        ALLOWED_DOC_TYPES.has(String(doc.docType)) &&
+        String(doc.docName || '').trim() &&
+        isImageDataUrl(doc.docUrl)
+    )
+    const hasValidId = preparedDocs.some((d) => d.docType === 'valid_id')
+    const hasLegalDocs = preparedDocs.some((d) => d.docType === 'legal_documents' || d.docType === 'other')
+    if (!hasValidId || !hasLegalDocs) {
+      return res.status(400).json({
+        error: 'Valid ID and Documents are both required. Upload JPG, JPEG, or PNG files before submitting.',
+      })
+    }
+
+    // --- Check for existing email ---
+    const [existing] = await pool.query('SELECT id FROM users WHERE email = ?', [cleanEmail])
+    if (existing.length > 0) {
+      return res.status(409).json({ error: 'An account with this email already exists. Try signing in instead.' })
+    }
+
+    // --- Create user ---
+    const AVATAR_COLORS = ['#1E73E8', '#33C7A5', '#0B2D63', '#F59E0B', '#EF4444']
+    const avatarColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]
+    const [userResult] = await pool.query(
+      'INSERT INTO users (email, password, role, name, phone, avatar_color) VALUES (?, ?, ?, ?, ?, ?)',
+      [cleanEmail, password, 'landlord', String(fullName).trim(), String(mobileNumber).trim(), avatarColor]
+    )
+    const userId = userResult.insertId
+
+    // --- Create landlord profile with location preference ---
+    const [landlordResult] = await pool.query(
+      'INSERT INTO landlords (user_id, location_pref, location_lat, location_lng) VALUES (?, ?, ?, ?)',
+      [userId, String(locationPref).trim(),
+       locationLat ? parseFloat(locationLat) : null,
+       locationLng ? parseFloat(locationLng) : null]
+    )
+    const landlordId = landlordResult.insertId
+
+    // --- Store submitted documents (always includes required Valid ID + Documents) ---
+    for (const doc of preparedDocs) {
+      await pool.query(
+        'INSERT INTO landlord_documents (landlord_id, doc_type, doc_name, doc_url) VALUES (?, ?, ?, ?)',
+        [landlordId, doc.docType, String(doc.docName).trim(), String(doc.docUrl).trim()]
+      )
+    }
+
+    res.json({
+      id: userId,
+      email: cleanEmail,
+      name: String(fullName).trim(),
+      role: 'landlord',
+      phone: String(mobileNumber).trim(),
+      avatar_color: avatarColor,
+      avatar_url: null,
+      landlordId,
+      locationPref: String(locationPref).trim(),
+      locationLat: locationLat ? parseFloat(locationLat) : null,
+      locationLng: locationLng ? parseFloat(locationLng) : null,
+    })
+  } catch (err) {
+    console.error('Landlord register error:', err)
     res.status(500).json({ error: 'Server error' })
   }
 })
@@ -1703,6 +1802,29 @@ async function ensureSchema() {
     }
   } catch (err) {
     console.warn('Schema check skipped:', err.message)
+  }
+
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS landlord_documents (
+        id int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        landlord_id int(11) NOT NULL,
+        doc_type enum('valid_id','business_permit','sec_registration','other','legal_documents') NOT NULL,
+        doc_name varchar(255) NOT NULL,
+        doc_url MEDIUMTEXT NOT NULL,
+        status enum('pending','approved','rejected') DEFAULT 'pending',
+        notes text DEFAULT NULL,
+        created_at timestamp NOT NULL DEFAULT current_timestamp(),
+        updated_at timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `)
+    await pool.query(`
+      ALTER TABLE landlord_documents
+        MODIFY doc_type enum('valid_id','business_permit','sec_registration','other','legal_documents') NOT NULL,
+        MODIFY doc_url MEDIUMTEXT NOT NULL
+    `)
+  } catch (err) {
+    console.warn('landlord_documents schema check skipped:', err.message)
   }
 }
 

@@ -38,8 +38,8 @@ export default function Navbar({ solid }: { solid?: boolean }) {
 
   const navLinks = [
     navLinkMeta.find((m) => m.labelKey === 'nav.explore'),
-    navLinkMeta.find((m) => m.labelKey === 'nav.locations'),
     navLinkMeta.find((m) => m.labelKey === 'nav.categories'),
+    navLinkMeta.find((m) => m.labelKey === 'nav.locations'),
     navLinkMeta.find((m) => m.labelKey === 'nav.howItWorks'),
     navLinkMeta.find((m) => m.labelKey === 'nav.pricing'),
   ].filter((m): m is { href: string; section?: string; labelKey: string } => Boolean(m))
