@@ -183,7 +183,7 @@ export default function DashboardLayout() {
               <button
                 onClick={() => {
                   setNotifOpen((o) => !o)
-                  if (!notifOpen && unread > 0) markRead.mutate()
+                  if (!notifOpen && unread > 0) markRead.mutate(undefined)
                 }}
                 className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-navy-700 transition hover:border-brand-300 hover:text-brand-500"
                 aria-label="Notifications"

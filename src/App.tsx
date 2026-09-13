@@ -29,6 +29,7 @@ import BoarderCompare from './pages/boarder/BoarderCompare'
 import BoarderReservations from './pages/boarder/BoarderReservations'
 import BoarderMessages from './pages/boarder/BoarderMessages'
 import BoarderProfile from './pages/boarder/BoarderProfile'
+import VirtualAssistant from './components/boarder/VirtualAssistant'
 
 function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode; requiredRole?: 'landlord' | 'boarder' }) {
   const { user } = useAuth()

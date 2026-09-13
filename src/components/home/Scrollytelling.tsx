@@ -1,23 +1,6 @@
-import { motion, useScroll, useTransform, useSpring, AnimatePresence } from 'framer-motion'
-import {
-  ArrowRight,
-  BadgeCheck,
-  BedDouble,
-  Bot,
-  CalendarCheck,
-  Check,
-  CreditCard,
-  FileText,
-  Receipt,
-  Search,
-  Send,
-  ShieldCheck,
-  Sparkles,
-  Star,
-  TrendingUp,
-  Wallet,
-} from 'lucide-react'
-import { useRef, useState, useEffect } from 'react'
+import { motion, useScroll, useTransform, useSpring, useMotionValueEvent, AnimatePresence } from 'framer-motion'
+import { ArrowRight, Sparkles } from 'lucide-react'
+import { useRef, useState } from 'react'
 
 /* ================================================================== */
 /*  Step data                                                          */
@@ -28,397 +11,46 @@ const STEPS = [
     label: 'Discover',
     title: 'Search, compare, and find verified boarding houses that fit your needs.',
     accent: 'from-brand-500 to-brand-600',
-    accentBg: 'bg-brand-500',
     accentText: 'text-brand-500',
-    accentLight: 'bg-brand-50',
+    image: '/howitworks/discover.png',
   },
   {
     num: '02',
     label: 'Book a Viewing',
     title: 'Message landlords, schedule a viewing, and secure your bed — all inside BoardEase.',
     accent: 'from-mint-400 to-mint-600',
-    accentBg: 'bg-mint-500',
     accentText: 'text-mint-600',
-    accentLight: 'bg-mint-50',
+    image: '/howitworks/bookaviewing.png',
   },
   {
     num: '03',
-    label: 'Pay & Move In',
-    title: 'Pay digitally and keep your receipts, contracts, and payment history in one place.',
+    label: 'Subscribe and Manage',
+    title: 'Choose a plan, subscribe, and keep your receipts, contracts, and payment history in one place.',
     accent: 'from-amber-400 to-amber-600',
-    accentBg: 'bg-amber-500',
     accentText: 'text-amber-600',
-    accentLight: 'bg-amber-50',
+    image: '/howitworks/subscribeandmanage.png',
   },
   {
     num: '04',
     label: 'Manage Smartly',
     title: 'Track occupancy, payments, and analytics — with an AI assistant that answers in seconds.',
     accent: 'from-navy-600 to-brand-600',
-    accentBg: 'bg-navy-600',
     accentText: 'text-navy-800',
-    accentLight: 'bg-navy-50',
+    image: '/pictures/landlord.png',
   },
 ]
 
-/* ================================================================== */
-/*  Step Visual — Each step has a unique animated mock UI               */
-/* ================================================================== */
-
-function StepDiscoverVisual({ progress }: { progress: number }) {
-  const opacity = Math.max(0, Math.min(1, progress * 3))
-  return (
-    <div className="relative h-full w-full overflow-hidden rounded-[20px] bg-gradient-to-br from-slate-50 to-white p-6 shadow-2xl">
-      {/* Browser chrome */}
-      <div className="flex items-center gap-2 rounded-t-xl bg-slate-100 px-4 py-2.5">
-        <div className="flex gap-1.5">
-          <div className="h-3 w-3 rounded-full bg-red-400" />
-          <div className="h-3 w-3 rounded-full bg-amber-400" />
-          <div className="h-3 w-3 rounded-full bg-green-400" />
-        </div>
-        <div className="ml-3 flex flex-1 items-center gap-2 rounded-lg bg-white px-3 py-1.5 text-xs text-slate-400">
-          <Search size={12} />
-          <span>boardease.com/search</span>
-        </div>
-      </div>
-
-      {/* Search filters */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: opacity, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="mt-4 grid grid-cols-3 gap-2"
-      >
-        {['San Juan', '₱2,500', 'Single'].map((f, i) => (
-          <motion.div
-            key={f}
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: opacity > 0.3 ? 1 : 0, scale: 1 }}
-            transition={{ delay: i * 0.15 + 0.2 }}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-center text-xs font-semibold text-navy-800 shadow-sm"
-          >
-            {f}
-          </motion.div>
-        ))}
-      </motion.div>
-
-      {/* Listing cards */}
-      <div className="mt-4 space-y-3">
-        {[
-          { name: 'Sunset Boarding House', price: '₱2,500', rating: '4.9', beds: '28 beds', img: 'sunset-scrolly' },
-          { name: 'Blue Horizon Rooms', price: '₱3,000', rating: '4.9', beds: '10 beds', img: 'horizon-scrolly' },
-        ].map((h, i) => (
-          <motion.div
-            key={h.name}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: opacity > 0.4 ? 1 : 0, x: opacity > 0.4 ? 0 : 20 }}
-            transition={{ delay: i * 0.2 + 0.4, duration: 0.5 }}
-            className="flex gap-3 rounded-xl border border-slate-100 bg-white p-3 shadow-sm"
-          >
-            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-brand-100 to-brand-200">
-              <img src={`https://picsum.photos/seed/${h.img}/200/200`} alt="" className="h-full w-full object-cover" />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-bold text-navy-800">{h.name}</p>
-              <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                <span className="flex items-center gap-0.5"><Star size={10} className="fill-amber-400 text-amber-400" />{h.rating}</span>
-                <span>·</span>
-                <span>{h.beds}</span>
-              </div>
-              <p className="mt-1 text-sm font-bold text-brand-500">{h.price}<span className="text-xs font-normal text-slate-400">/mo</span></p>
-            </div>
-            <BadgeCheck size={18} className="mt-1 shrink-0 text-brand-500" />
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Floating filter chips */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: opacity > 0.6 ? 1 : 0 }}
-        transition={{ delay: 0.6 }}
-        className="mt-3 flex flex-wrap gap-1.5"
-      >
-        {['WiFi ✓', 'Aircon ✓', 'Near School ✓'].map((chip) => (
-          <span key={chip} className="rounded-full bg-brand-50 px-2.5 py-1 text-[10px] font-semibold text-brand-600">{chip}</span>
-        ))}
-      </motion.div>
-    </div>
-  )
-}
-
-function StepBookVisual({ progress }: { progress: number }) {
-  const opacity = Math.max(0, Math.min(1, progress * 3))
-  return (
-    <div className="relative h-full w-full overflow-hidden rounded-[20px] bg-gradient-to-br from-slate-50 to-white shadow-2xl">
-      {/* Chat header */}
-      <div className="flex items-center gap-3 border-b border-slate-100 bg-white px-5 py-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-600 text-xs font-bold text-white">RC</div>
-        <div>
-          <p className="text-sm font-bold text-navy-800">Rosario C.</p>
-          <p className="text-[10px] text-green-500">● Online</p>
-        </div>
-      </div>
-
-      {/* Chat messages */}
-      <div className="space-y-3 p-5">
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: opacity > 0.2 ? 1 : 0, y: opacity > 0.2 ? 0 : 8 }}
-          transition={{ delay: 0.1 }}
-          className="flex justify-end"
-        >
-          <div className="max-w-[75%] rounded-2xl rounded-tr-md bg-brand-500 px-4 py-2.5 text-sm text-white">
-            Hi! Is Room 201 still available? I'd like to schedule a viewing.
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: opacity > 0.5 ? 1 : 0, y: opacity > 0.5 ? 0 : 8 }}
-          transition={{ delay: 0.3 }}
-          className="flex justify-start"
-        >
-          <div className="max-w-[75%] rounded-2xl rounded-tl-md border border-slate-100 bg-white px-4 py-2.5 text-sm text-navy-700 shadow-sm">
-            Yes! Room 201 is available. When would you like to visit? 😊
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: opacity > 0.7 ? 1 : 0, y: opacity > 0.7 ? 0 : 8 }}
-          transition={{ delay: 0.5 }}
-          className="flex justify-end"
-        >
-          <div className="max-w-[75%] rounded-2xl rounded-tr-md bg-brand-500 px-4 py-2.5 text-sm text-white">
-            Tomorrow at 2PM works for me! 🙏
-          </div>
-        </motion.div>
-      </div>
-
-      {/* Confirmation cards */}
-      <div className="space-y-2 px-5">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: opacity > 0.75 ? 1 : 0, scale: opacity > 0.75 ? 1 : 0.95 }}
-          transition={{ delay: 0.6, type: 'spring' }}
-          className="flex items-center gap-3 rounded-xl border border-mint-200 bg-mint-50 p-3"
-        >
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-mint-500 text-white"><CalendarCheck size={16} /></span>
-          <div>
-            <p className="text-xs font-bold text-mint-700">Viewing Confirmed ✓</p>
-            <p className="text-[10px] text-mint-600">Tomorrow at 2:00 PM · Room 201</p>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: opacity > 0.9 ? 1 : 0, scale: opacity > 0.9 ? 1 : 0.95 }}
-          transition={{ delay: 0.8, type: 'spring' }}
-          className="flex items-center gap-3 rounded-xl border border-brand-200 bg-brand-50 p-3"
-        >
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-white"><BedDouble size={16} /></span>
-          <div>
-            <p className="text-xs font-bold text-brand-700">Bed Reserved ✓</p>
-            <p className="text-[10px] text-brand-600">Room 201 · ₱2,500/month</p>
-          </div>
-        </motion.div>
-      </div>
-
-      {/* Input bar */}
-      <div className="absolute bottom-0 inset-x-0 border-t border-slate-100 bg-white p-3">
-        <div className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
-          <input placeholder="Type a message…" className="flex-1 bg-transparent text-xs text-navy-800 outline-none" readOnly />
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-500 text-white"><Send size={12} /></span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function StepPayVisual({ progress }: { progress: number }) {
-  const opacity = Math.max(0, Math.min(1, progress * 3))
-  return (
-    <div className="relative h-full w-full overflow-hidden rounded-[20px] bg-gradient-to-br from-slate-50 to-white p-5 shadow-2xl">
-      {/* Payment header */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: opacity > 0.2 ? 1 : 0, y: 0 }}
-        className="rounded-2xl bg-gradient-to-r from-navy-900 to-navy-700 p-4 text-white"
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-mint-300">Rent Payment</p>
-            <p className="mt-1 text-2xl font-extrabold">₱2,500</p>
-            <p className="text-[10px] text-navy-200">August 2026 · Room 201</p>
-          </div>
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10"><Wallet size={22} /></span>
-        </div>
-      </motion.div>
-
-      {/* Payment method */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: opacity > 0.4 ? 1 : 0, y: opacity > 0.4 ? 0 : 10 }}
-        transition={{ delay: 0.15 }}
-        className="mt-4 grid grid-cols-2 gap-2"
-      >
-        <div className="flex items-center gap-2 rounded-xl border-2 border-brand-500 bg-brand-50 p-3">
-          <CreditCard size={16} className="text-brand-500" />
-          <span className="text-xs font-bold text-brand-600">GCash</span>
-          <Check size={14} className="ml-auto text-brand-500" />
-        </div>
-        <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-3">
-          <Receipt size={16} className="text-slate-400" />
-          <span className="text-xs font-semibold text-slate-600">PayLink</span>
-        </div>
-      </motion.div>
-
-      {/* Success receipt */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: opacity > 0.65 ? 1 : 0, scale: opacity > 0.65 ? 1 : 0.9 }}
-        transition={{ delay: 0.3, type: 'spring' }}
-        className="mt-4 rounded-xl border border-mint-200 bg-mint-50 p-4"
-      >
-        <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-mint-500 text-white"><Check size={16} /></span>
-          <div>
-            <p className="text-sm font-bold text-mint-700">Payment Successful!</p>
-            <p className="text-[10px] text-mint-600">Receipt #GC-482917 · Paid via GCash</p>
-          </div>
-        </div>
-        <div className="mt-3 grid grid-cols-3 gap-2 rounded-lg bg-white p-2.5">
-          {[
-            { label: 'Receipt', icon: Receipt },
-            { label: 'Contract', icon: FileText },
-            { label: 'History', icon: TrendingUp },
-          ].map((d) => (
-            <div key={d.label} className="flex flex-col items-center gap-1 rounded-lg bg-slate-50 p-2">
-              <d.icon size={14} className="text-brand-500" />
-              <span className="text-[10px] font-semibold text-navy-800">{d.label}</span>
-            </div>
-          ))}
-        </div>
-      </motion.div>
-
-      {/* Real-life transition */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: opacity > 0.85 ? 1 : 0 }}
-        transition={{ delay: 0.4 }}
-        className="mt-4 overflow-hidden rounded-xl"
-      >
-        <img
-          src="https://picsum.photos/seed/move-in-scrolly/600/200"
-          alt="Student arriving at boarding house"
-          className="h-24 w-full object-cover"
-        />
-        <div className="absolute bottom-5 inset-x-5 rounded-lg bg-white/90 px-3 py-2 text-center text-xs font-bold text-navy-800 shadow-lg backdrop-blur">
-          🎒 Welcome home! Your room is ready.
-        </div>
-      </motion.div>
-    </div>
-  )
-}
-
-function StepManageVisual({ progress }: { progress: number }) {
-  const opacity = Math.max(0, Math.min(1, progress * 3))
-  return (
-    <div className="relative h-full w-full overflow-hidden rounded-[20px] bg-gradient-to-br from-slate-50 to-white shadow-2xl">
-      {/* Dashboard header */}
-      <div className="border-b border-slate-100 bg-white px-5 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-navy-800 to-brand-500 text-xs font-bold text-white">BE</div>
-            <div>
-              <p className="text-xs font-bold text-navy-800">Dashboard</p>
-              <p className="text-[10px] text-slate-400">Sunset Boarding House</p>
-            </div>
-          </div>
-          <ShieldCheck size={16} className="text-mint-500" />
-        </div>
-      </div>
-
-      {/* Stats row */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: opacity > 0.2 ? 1 : 0, y: 0 }}
-        className="grid grid-cols-3 gap-2 p-4"
-      >
-        {[
-          { label: 'Occupancy', value: '82%', color: 'text-brand-500' },
-          { label: 'Collected', value: '₱32K', color: 'text-mint-600' },
-          { label: 'Pending', value: '₱4.5K', color: 'text-amber-500' },
-        ].map((s, i) => (
-          <motion.div
-            key={s.label}
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: opacity > 0.3 ? 1 : 0, scale: 1 }}
-            transition={{ delay: i * 0.1 + 0.2 }}
-            className="rounded-xl bg-slate-50 p-2.5 text-center"
-          >
-            <p className={`text-lg font-extrabold ${s.color}`}>{s.value}</p>
-            <p className="text-[9px] font-semibold text-slate-500">{s.label}</p>
-          </motion.div>
-        ))}
-      </motion.div>
-
-      {/* Chart mock */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: opacity > 0.5 ? 1 : 0 }}
-        transition={{ delay: 0.3 }}
-        className="mx-4 overflow-hidden rounded-xl border border-slate-100 bg-white p-3"
-      >
-        <p className="text-[10px] font-bold text-navy-800">Revenue Trend</p>
-        <div className="mt-2 flex items-end gap-1.5 h-16">
-          {[40, 55, 45, 70, 60, 85, 75, 90].map((h, i) => (
-            <motion.div
-              key={i}
-              initial={{ height: 0 }}
-              animate={{ height: opacity > 0.5 ? `${h}%` : 0 }}
-              transition={{ delay: i * 0.05 + 0.4, duration: 0.4, ease: 'easeOut' }}
-              className="flex-1 rounded-t bg-gradient-to-t from-brand-500 to-brand-400"
-            />
-          ))}
-        </div>
-      </motion.div>
-
-      {/* AI assistant */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: opacity > 0.7 ? 1 : 0, y: opacity > 0.7 ? 0 : 10 }}
-        transition={{ delay: 0.5 }}
-        className="mx-4 mt-3"
-      >
-        <div className="flex items-center gap-2 rounded-xl border border-mint-200 bg-mint-50 p-3">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-mint-400 to-brand-500 text-white"><Bot size={14} /></span>
-          <div className="flex-1">
-            <p className="text-[10px] font-bold text-navy-800">AI Assistant</p>
-            <p className="text-[10px] text-slate-500">"Which rooms have unpaid rent?"</p>
-          </div>
-        </div>
-        <motion.div
-          initial={{ opacity: 0, y: 5 }}
-          animate={{ opacity: opacity > 0.9 ? 1 : 0, y: 0 }}
-          transition={{ delay: 0.7 }}
-          className="mt-2 rounded-xl border border-slate-100 bg-white p-3 text-[10px]"
-        >
-          <p className="font-bold text-navy-800">2 rooms with unpaid rent:</p>
-          <div className="mt-1.5 space-y-1">
-            {['Room 102 — ₱1,500 (overdue)', 'Room 205 — ₱4,000 (pending)'].map((r) => (
-              <div key={r} className="flex items-center gap-1.5 text-slate-600">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                {r}
-              </div>
-            ))}
-          </div>
-        </motion.div>
-      </motion.div>
-    </div>
-  )
-}
+/* ------------------------------------------------------------------ */
+/*  Scrollytelling timing                                              */
+/* ------------------------------------------------------------------ */
+const STEP_COUNT = STEPS.length
+/** Each step owns an equal slice of the section's scroll progress. */
+const SLICE = 1 / STEP_COUNT
+/** Half-width of the text/visual cross-fade, in progress units. The fade
+ *  is centred on the slice boundary so the outgoing and incoming step are
+ *  always at mirror-image opacity — this is what keeps the words and the
+ *  artwork switching at exactly the same scroll position. */
+const FADE = 0.05
 
 /* ================================================================== */
 /*  Main Scrollytelling Component                                       */
@@ -432,46 +64,26 @@ export default function Scrollytelling() {
     offset: ['start start', 'end end'],
   })
 
-  const smoothProgress = useSpring(scrollYProgress, { stiffness: 100, damping: 30 })
+  // Spring that tracks the scroll closely (little lag) but still glides, so
+  // the cross-fade starts the moment you scroll instead of trailing behind it.
+  const smoothProgress = useSpring(scrollYProgress, { stiffness: 200, damping: 34, mass: 0.35, restDelta: 0.0005 })
 
-  // Determine active step from scroll progress
-  useEffect(() => {
-    return smoothProgress.on('change', (v) => {
-      const step = Math.min(3, Math.floor(v * 4))
-      setActiveStep(step)
-    })
-  }, [smoothProgress])
-
-  // Transform for each step's opacity
-  const step0Opacity = useTransform(smoothProgress, [0, 0.05, 0.2, 0.25], [0, 1, 1, 0])
-  const step1Opacity = useTransform(smoothProgress, [0.2, 0.3, 0.5, 0.55], [0, 1, 1, 0])
-  const step2Opacity = useTransform(smoothProgress, [0.5, 0.55, 0.75, 0.8], [0, 1, 1, 0])
-  const step3Opacity = useTransform(smoothProgress, [0.75, 0.8, 0.98, 1], [0, 1, 1, 0.8])
-
-  const stepOpacities = [step0Opacity, step1Opacity, step2Opacity, step3Opacity]
-
-  // Step-level progress for visual animations
-  const visualProgresses = [
-    useTransform(smoothProgress, [0, 0.25], [0, 1]),
-    useTransform(smoothProgress, [0.25, 0.5], [0, 1]),
-    useTransform(smoothProgress, [0.5, 0.75], [0, 1]),
-    useTransform(smoothProgress, [0.75, 1], [0, 1]),
+  // Text + visual cross-fades, centred on each slice boundary. The outgoing
+  // and incoming step are always at mirrored opacity, so nothing ever pops.
+  const stepOpacities = [
+    useTransform(smoothProgress, [0, FADE, SLICE - FADE, SLICE], [0, 1, 1, 0]),
+    useTransform(smoothProgress, [SLICE - FADE, SLICE, 2 * SLICE - FADE, 2 * SLICE], [0, 1, 1, 0]),
+    useTransform(smoothProgress, [2 * SLICE - FADE, 2 * SLICE, 3 * SLICE - FADE, 3 * SLICE], [0, 1, 1, 0]),
+    useTransform(smoothProgress, [3 * SLICE - FADE, 3 * SLICE, 0.99, 1], [0, 1, 1, 1]),
   ]
 
-  const [visualValues, setVisualValues] = useState([0, 0, 0, 0])
-
-  useEffect(() => {
-    const unsubs = visualProgresses.map((p, i) =>
-      p.on('change', (v) => {
-        setVisualValues((prev) => {
-          const next = [...prev]
-          next[i] = v
-          return next
-        })
-      })
-    )
-    return () => unsubs.forEach((u) => u())
-  }, [])
+  // The step switch lands on the midpoint of the cross-fade, so the index and
+  // the blend agree. Only fires when the index actually changes — no re-render
+  // on every scroll frame.
+  useMotionValueEvent(smoothProgress, 'change', (v) => {
+    const next = v < SLICE - FADE / 2 ? 0 : v < 2 * SLICE - FADE / 2 ? 1 : v < 3 * SLICE - FADE / 2 ? 2 : 3
+    setActiveStep((prev) => (prev === next ? prev : next))
+  })
 
   return (
     <section id="how-it-works" className="relative bg-navy-950 text-white">
@@ -490,17 +102,21 @@ export default function Scrollytelling() {
       </div>
 
       {/* Scrollytelling body */}
-      <div ref={containerRef} className="relative" style={{ height: '500vh' }}>
-        <div className="flex h-screen items-center">
+      <div ref={containerRef} className="relative" style={{ height: '320vh' }}>
+        {/* Sticky viewport — this is what keeps the step pinned while the
+            500vh track scrolls past, so the words on screen always match the
+            scroll position. */}
+        <div className="sticky top-0 flex h-screen items-center">
           <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[1fr_1.1fr] lg:gap-16 lg:py-10">
             {/* Step text — MOBILE: non-absolute, above visual. DESKTOP: absolute side-by-side */}
             <div className="relative order-2 flex flex-col justify-center lg:order-1">
-              {/* Desktop: absolute stacked steps */}
+              {/* Desktop: absolute stacked steps, cross-fading continuously */}
               <div className="hidden lg:block">
                 {STEPS.map((step, i) => (
                   <motion.div
                     key={step.num}
                     style={{ opacity: stepOpacities[i] }}
+                    aria-hidden={i !== activeStep}
                     className="absolute inset-0 flex flex-col justify-center"
                   >
                     <div className="flex items-center gap-3">
@@ -533,7 +149,7 @@ export default function Scrollytelling() {
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -16 }}
-                    transition={{ duration: 0.4, ease: 'easeOut' }}
+                    transition={{ duration: 0.35, ease: 'easeOut' }}
                     className="flex flex-col justify-center text-center"
                   >
                     <div className="flex items-center justify-center gap-3">
@@ -559,24 +175,28 @@ export default function Scrollytelling() {
               </div>
             </div>
 
-            {/* Visual — MOBILE: below text. DESKTOP: side-by-side */}
+            {/* Visual — MOBILE: below text. DESKTOP: side-by-side.
+                All four images stay mounted and cross-fade on the very same
+                opacities as their text, so the pair is always in sync. */}
             <div className="relative order-1 flex items-center justify-center lg:order-2">
-              <div className="relative h-[300px] w-full max-w-[380px] sm:h-[360px] lg:h-[480px] lg:max-w-[480px]">
-                <AnimatePresence mode="wait">
+              <div className="relative h-[380px] w-full max-w-[500px] sm:h-[460px] lg:h-[600px] lg:max-w-[620px]">
+                {STEPS.map((step, i) => (
                   <motion.div
-                    key={activeStep}
-                    initial={{ opacity: 0, y: 20, scale: 0.97 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -20, scale: 0.97 }}
-                    transition={{ duration: 0.5, ease: 'easeOut' }}
-                    className="absolute inset-0"
+                    key={step.image}
+                    style={{ opacity: stepOpacities[i] }}
+                    aria-hidden={i !== activeStep}
+                    className="edge-fade-y pointer-events-none absolute inset-0 flex items-center justify-center"
                   >
-                    {activeStep === 0 && <StepDiscoverVisual progress={visualValues[0]} />}
-                    {activeStep === 1 && <StepBookVisual progress={visualValues[1]} />}
-                    {activeStep === 2 && <StepPayVisual progress={visualValues[2]} />}
-                    {activeStep === 3 && <StepManageVisual progress={visualValues[3]} />}
+                    <div className="edge-fade-x flex h-full w-full items-center justify-center">
+                      <img
+                        src={step.image}
+                        alt={step.label}
+                        draggable={false}
+                        className="h-full w-full object-contain drop-shadow-2xl"
+                      />
+                    </div>
                   </motion.div>
-                </AnimatePresence>
+                ))}
 
                 {/* Glow effect behind visual */}
                 <div className="pointer-events-none absolute -inset-10 rounded-full bg-brand-500/5 blur-3xl" />

@@ -45,37 +45,62 @@ export default function Navbar({ solid }: { solid?: boolean }) {
   ].filter((m): m is { href: string; section?: string; labelKey: string } => Boolean(m))
 
   const [activeSection, setActiveSection] = useState('hero')
+  const activeSectionRef = useRef('hero')
 
-  // Map nav sections to actual DOM element IDs
-  const sectionToDomId: Record<string, string> = {
-    explore: 'featured',
-    featured: 'featured',
-    categories: 'categories',
-    locations: 'locations',
-    'how-it-works': 'how-it-works',
-    pricing: 'pricing',
-  }
-
+  // One rAF-throttled reader drives both the solid header state and the active
+  // section, so the nav underline gets a single, stable signal per frame.
   useEffect(() => {
-    const onScroll = () => {
-      // Use DOM IDs that actually exist in the page
-      const domIds = ['featured', 'categories', 'locations', 'how-it-works', 'pricing']
-      const section = domIds.reduce<string>((closest, id) => {
+    // DOM IDs that actually exist in the page, in document order.
+    const domIds = ['featured', 'categories', 'locations', 'how-it-works', 'pricing']
+    const SWITCH_LINE = 90 // px from the top of the viewport
+    const HYSTERESIS = 32 // px of dead band that stops boundary flicker
+
+    const measure = () => {
+      setScrolled(window.scrollY > 12)
+
+      // The active section is the last one whose top has crossed the line.
+      let next = 'hero'
+      let bestTop = -Infinity
+      for (const id of domIds) {
         const el = document.getElementById(id)
-        if (!el) return closest
+        if (!el) continue
         const top = el.getBoundingClientRect().top
-        const closestEl = document.getElementById(closest)
-        const closestTop = closestEl ? closestEl.getBoundingClientRect().top : -999
-        if (top - 90 <= 0 && top > closestTop) {
-          return id
+        if (top - SWITCH_LINE <= 0 && top > bestTop) {
+          bestTop = top
+          next = id
         }
-        return closest
-      }, 'hero')
-      setActiveSection(section)
+      }
+
+      const current = activeSectionRef.current
+      if (current === next) return
+
+      // Don't hand the underline over while the current section is still
+      // parked on the switch line — that was what made it flicker back and
+      // forth between two items. Wait until we are clearly past it.
+      const currentTop = document.getElementById(current)?.getBoundingClientRect().top
+      if (currentTop !== undefined && Math.abs(currentTop - SWITCH_LINE) < HYSTERESIS) return
+
+      activeSectionRef.current = next
+      setActiveSection(next)
     }
-    onScroll()
+
+    let ticking = false
+    const onScroll = () => {
+      if (ticking) return
+      ticking = true
+      requestAnimationFrame(() => {
+        ticking = false
+        measure()
+      })
+    }
+
+    measure()
     window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
+    window.addEventListener('resize', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+    }
   }, [])
 
   const handleLogout = () => {
@@ -87,26 +112,6 @@ export default function Navbar({ solid }: { solid?: boolean }) {
     setLang(code)
     setLangOpen(false)
   }
-
-  useEffect(() => {
-    const onScrollFrame = () => setScrolled(window.scrollY > 12)
-
-    let ticking = false
-    const onScrollThrottled = () => {
-      if (ticking) return
-      ticking = true
-      requestAnimationFrame(() => {
-        ticking = false
-        onScrollFrame()
-      })
-    }
-
-    onScrollFrame()
-    window.addEventListener('scroll', onScrollThrottled, { passive: true })
-    return () => {
-      window.removeEventListener('scroll', onScrollThrottled)
-    }
-  }, [])
 
   useEffect(() => {
     if (!langOpen) return
@@ -143,7 +148,7 @@ export default function Navbar({ solid }: { solid?: boolean }) {
     overlay ? 'text-white/90 hover:bg-white/10 hover:text-white' : 'text-navy-700 hover:bg-navy-50',
   )
 
-  const NavLink = ({ href, labelKey, section }: { href: string; labelKey: string; section?: string }) => {
+  const NavLink = ({ href, labelKey, section, markerId }: { href: string; labelKey: string; section?: string; markerId: string }) => {
     const label = t(labelKey)
     const isPageActive = href === '/search' ? location.pathname === '/search' : location.pathname === '/'
     const active = section ? activeSection === section : isPageActive
@@ -177,12 +182,17 @@ export default function Navbar({ solid }: { solid?: boolean }) {
         aria-current={active ? 'page' : undefined}
       >
         {label}
-        <span
-          className={cn(
-            'absolute -bottom-0.5 left-1/2 h-1 w-0 rounded-full bg-brand-400 shadow-sm transition-all duration-300',
-            active && section ? (overlay ? 'w-[60%] -translate-x-1/2 shadow-[0_0_8px_rgba(74_144_238_0.7)]' : 'w-[40%] -translate-x-1/2 shadow-[0_0_6px_rgba(74_144_238_0.5)]') : 'w-0',
-          )}
-        />
+        {/* One shared element per nav bar: because the *same* element glides
+            between items, the underline slides over instead of one bar
+            shrinking while another grows (the old blinking). */}
+        {active && section && (
+          <motion.span
+            layoutId={`nav-active-underline-${markerId}`}
+            transition={{ type: 'spring', stiffness: 300, damping: 32, mass: 0.8 }}
+            className="absolute -bottom-0.5 left-[30%] h-1 w-[40%] rounded-full bg-brand-400"
+            aria-hidden="true"
+          />
+        )}
       </a>
     )
   }
@@ -268,7 +278,7 @@ export default function Navbar({ solid }: { solid?: boolean }) {
         <div className="hidden items-center gap-1 md:flex">
           <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
             {navLinks.map((l) => (
-              <NavLink key={l.section ?? l.labelKey} href={l.href} labelKey={l.labelKey} section={l.section} />
+              <NavLink key={l.section ?? l.labelKey} href={l.href} labelKey={l.labelKey} section={l.section} markerId="desktop" />
             ))}
           </div>
         </div>
@@ -330,7 +340,7 @@ export default function Navbar({ solid }: { solid?: boolean }) {
           >
             <div className="flex flex-col gap-1 px-4 py-4">
               {navLinks.map((l) => (
-                <NavLink key={l.section ?? l.labelKey} href={l.href} labelKey={l.labelKey} section={l.section} />
+                <NavLink key={l.section ?? l.labelKey} href={l.href} labelKey={l.labelKey} section={l.section} markerId="mobile" />
               ))}
               <div className={cn(overlay ? 'text-white' : 'text-navy-800')}>
                 <LangMenu mobile />

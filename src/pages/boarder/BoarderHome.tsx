@@ -79,8 +79,6 @@ export default function BoarderHome() {
   const { data: favorites } = useFavorites(userId)
   const compare = useCompare()
 
-  const firstName = user?.name?.split(' ')[0] ?? 'Boarder'
-
   if (isLoading) {
     return (
       <div className="space-y-6">

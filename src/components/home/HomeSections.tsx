@@ -467,7 +467,6 @@ export function CTA() {
     <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
       <Reveal>
         <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-navy-900 via-navy-800 to-brand-700 px-6 py-16 text-center shadow-card-hover sm:px-16">
-          <div className="hero-grid-bg absolute inset-0" />
           <div className="hero-blob -right-10 -top-10 h-64 w-64 bg-mint-400" />
           <div className="hero-blob -bottom-16 left-10 h-64 w-64 bg-brand-500" />
           <div className="relative">

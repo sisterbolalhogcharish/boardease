@@ -4,7 +4,7 @@ import { useLanguage, type LangCode } from '../../lib/i18n'
 import { useAuth } from '../../lib/auth'
 import { Avatar } from '../../components/ui'
 import { useUpdateLandlordProfile, useUpdateProfile } from '../../lib/hooks'
-import { cn, fileToSquareDataUrl, prettyDate } from '../../lib/utils'
+import { cn, fileToSquareDataUrl } from '../../lib/utils'
 
 const TOGGLES = [
   { key: 'rentDue', label: 'Rent due reminders', desc: 'Notify 3 days before rent is due.' },
