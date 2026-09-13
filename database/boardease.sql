@@ -287,23 +287,7 @@ CREATE TABLE `reviews` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `landlord_documents`
---
-
-CREATE TABLE `landlord_documents` (
-  `id` int(11) NOT NULL,
-  `landlord_id` int(11) NOT NULL,
-  `doc_type` enum('valid_id','business_permit','sec_registration','other','legal_documents') NOT NULL,
-  `doc_name` varchar(255) NOT NULL,
-  `doc_url` mediumtext NOT NULL,
-  `status` enum('pending','approved','rejected') DEFAULT 'pending',
-  `notes` text DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
---
--- Table structure for table `landlords`
+-- Table structure for table `rooms`
 --
 
 CREATE TABLE `rooms` (
