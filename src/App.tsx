@@ -39,6 +39,12 @@ function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode;
   return <>{children}</>
 }
 
+function BoarderOnly({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth()
+  if (!user || user.role !== 'boarder') return null
+  return <>{children}</>
+}
+
 export default function App() {
   return (
     <>
@@ -95,9 +101,11 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {/* Global boarder/discovery helpers */}
+      {/* Global discovery helpers — compare dock is public-facing; VirtualAssistant is boarder-only and only appears after login */}
       <CompareDock />
-      <VirtualAssistant />
+      <BoarderOnly>
+        <VirtualAssistant />
+      </BoarderOnly>
     </>
   )
 }

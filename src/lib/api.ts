@@ -516,6 +516,26 @@ export async function updateBoarderProfile(patch: Partial<BoarderProfile> & { us
   return fetchJSON<{ ok: boolean }>('/boarder/profile', { method: 'PUT', body: JSON.stringify(patch) })
 }
 
+/**
+ * Landlord profile patch.
+ *
+ * The mock server does not yet expose a dedicated landlord-profile route, so this
+ * currently delegates to the shared profile endpoint and lets the server ignore
+ * boarder-only fields (age, gender, school, etc.). Once a landlord-profile route is
+ * added, point this at `/owner/profile` instead.
+ */
+export interface LandlordProfilePatch {
+  userId: string
+  name?: string
+  phone?: string
+  property?: string
+  avatarUrl?: string
+}
+
+export async function updateLandlordProfile(patch: LandlordProfilePatch): Promise<{ ok: boolean }> {
+  return fetchJSON<{ ok: boolean }>('/boarder/profile', { method: 'PUT', body: JSON.stringify(patch) })
+}
+
 /* ------------------------------------------------------------------ */
 /*  Boarder — favorites                                                */
 /* ------------------------------------------------------------------ */
