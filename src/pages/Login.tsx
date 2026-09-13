@@ -429,9 +429,9 @@ export default function Login() {
                   </button>
 
                   <p className="text-center text-xs leading-relaxed text-white/40">
-                    Boarding-house owners are onboarded by BoardEase administration.{' '}
-                    <Link to="/" className="font-semibold text-brand-300 transition hover:text-brand-200">
-                      Contact us
+                    Boarding-house owners can sign up directly.{' '}
+                    <Link to="/landlord/signup" className="font-semibold text-brand-300 transition hover:text-brand-200">
+                      Sign up as landlord
                     </Link>{' '}
                     to list your boarding house.
                   </p>

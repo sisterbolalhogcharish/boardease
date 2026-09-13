@@ -14,7 +14,8 @@
   --color-navy-700: #12377a;
   --color-navy-800: #0b2d63;
   --color-navy-900: #08224d;
-  --color-navy-950: #061a3c;
+  --color-navy-950: #0c1b33;  /* balanced boarder sidebar: deep navy with visible logo */
+  --color-navy-900: #08224d;
 
   /* Primary Blue — #1E73E8 */
   --color-brand-50: #eef5fe;

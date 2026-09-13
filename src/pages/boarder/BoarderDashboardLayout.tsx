@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
+import VirtualAssistant from '../../components/boarder/VirtualAssistant'
 import {
   ArrowLeftRight,
   Building2,
@@ -60,9 +61,15 @@ export default function BoarderDashboardLayout() {
     <div className="flex h-full flex-col bg-navy-900">
       <div className="px-6 pb-2 pt-6">
         <Link to="/" className="inline-flex" aria-label="BoardEase home">
-          <img src="/logo.png" alt="BoardEase" decoding="async" className="h-12 w-auto rounded-lg" />
+          <img
+            src="/logo.png"
+            alt="BoardEase"
+            decoding="async"
+            className="h-14 w-auto drop-shadow-sm"
+            draggable={false}
+          />
         </Link>
-        <p className="mt-2 text-[10px] font-medium tracking-wide text-navy-300">Boarder Portal</p>
+        <p className="mt-2 text-[10px] font-semibold tracking-wide text-navy-300 uppercase">Boarder Portal</p>
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2" aria-label="Boarder navigation">
@@ -77,17 +84,21 @@ export default function BoarderDashboardLayout() {
               className={cn(
                 'group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200',
                 active
-                  ? 'bg-mint-500 text-white shadow-[0_8px_20px_rgb(51_199_165/0.4)]'
+                  ? 'bg-gradient-to-r from-emerald-400 to-teal-400 text-navy-950 shadow-[0_8px_20px_rgb(51_199_165/0.55)] ring-1 ring-white/20'
                   : 'text-navy-200 hover:bg-white/5 hover:text-white',
               )}
             >
-              <item.icon size={18} className={active ? '' : 'text-navy-300 group-hover:text-mint-300'} />
+              {active ? (
+                <item.icon size={18} className="text-navy-950" />
+              ) : (
+                <item.icon size={18} className="text-navy-300 group-hover:text-mint-300" />
+              )}
               <span className="flex-1">{item.label}</span>
               {item.badge ? (
                 <span
                   className={cn(
                     'flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold',
-                    active ? 'bg-white/25 text-white' : 'bg-mint-400/20 text-mint-300',
+                    active ? 'bg-navy-900/40 text-navy-50 ring-1 ring-white/20' : 'bg-mint-400/20 text-mint-300',
                   )}
                 >
                   {item.badge > 9 ? '9+' : item.badge}
@@ -99,12 +110,12 @@ export default function BoarderDashboardLayout() {
       </nav>
 
       <div className="border-t border-white/10 p-4">
-        <div className="flex items-center gap-3 rounded-xl bg-white/5 p-3">
+        <div className="flex items-center gap-3 rounded-xl bg-white/[0.04] p-3 ring-1 ring-white/5">
           <Avatar
             src={user?.avatarUrl}
             name={user?.name}
             color={user?.avatarColor}
-            className="h-10 w-10 text-sm"
+            className="h-9 w-9 text-sm shadow-sm"
             rounded="full"
           />
           <div className="min-w-0 flex-1">
@@ -144,6 +155,9 @@ export default function BoarderDashboardLayout() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Virtual assistant — only on boarder side */}
+      <VirtualAssistant />
 
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col lg:pl-64">

@@ -176,6 +176,9 @@ CREATE TABLE `landlords` (
   `government_id` varchar(100) DEFAULT NULL,
   `verified` tinyint(1) DEFAULT 0,
   `subscription` enum('none','starter','standard','premium') DEFAULT 'none',
+  `location_pref` varchar(255) DEFAULT NULL,
+  `location_lat` decimal(10,7) DEFAULT NULL,
+  `location_lng` decimal(10,7) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -284,7 +287,23 @@ CREATE TABLE `reviews` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `rooms`
+-- Table structure for table `landlord_documents`
+--
+
+CREATE TABLE `landlord_documents` (
+  `id` int(11) NOT NULL,
+  `landlord_id` int(11) NOT NULL,
+  `doc_type` enum('valid_id','business_permit','sec_registration','other','legal_documents') NOT NULL,
+  `doc_name` varchar(255) NOT NULL,
+  `doc_url` mediumtext NOT NULL,
+  `status` enum('pending','approved','rejected') DEFAULT 'pending',
+  `notes` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `landlords`
 --
 
 CREATE TABLE `rooms` (
@@ -317,6 +336,32 @@ INSERT INTO `rooms` (`id`, `house_id`, `room_no`, `type`, `capacity`, `occupied`
 (10, 1, '301', 'single', 1, 1, 2800, 'mixed', 1, '2026-09-06 06:27:40'),
 (11, 1, '302', 'single', 1, 0, 2800, 'mixed', 1, '2026-09-06 06:27:40'),
 (12, 1, '303', 'double', 2, 1, 4200, 'mixed', 1, '2026-09-06 06:27:40');
+
+--
+-- ALTER TABLE migrations (run only if columns do not exist)
+--
+
+-- Add location_pref columns to landlords if missing
+ALTER TABLE `landlords` 
+  ADD COLUMN `location_pref` varchar(255) DEFAULT NULL AFTER `subscription`,
+  ADD COLUMN `location_lat` decimal(10,7) DEFAULT NULL AFTER `location_pref`,
+  ADD COLUMN `location_lng` decimal(10,7) DEFAULT NULL AFTER `location_lat`;
+
+-- Add landlord_documents table if missing
+CREATE TABLE IF NOT EXISTS `landlord_documents` (
+  `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `landlord_id` int(11) NOT NULL,
+  `doc_type` enum('valid_id','business_permit','sec_registration','other','legal_documents') NOT NULL,
+  `doc_name` varchar(255) NOT NULL,
+  `doc_url` mediumtext NOT NULL,
+  `status` enum('pending','approved','rejected') DEFAULT 'pending',
+  `notes` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE `landlord_documents` ADD PRIMARY KEY (`id`);
+ALTER TABLE `landlord_documents` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 -- --------------------------------------------------------
 
