@@ -129,6 +129,26 @@ body {
   pointer-events: none;
 }
 
+/* Nested edge-fade masks for cut-out artwork: put .edge-fade-y on an outer
+   wrapper and .edge-fade-x on an inner one and the two gradients intersect,
+   so the picture melts into its background on all four sides instead of
+   ending on a hard, "cut off" edge. */
+.edge-fade-x {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
+}
+
+.edge-fade-y {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 14%, #000 86%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 14%, #000 86%, transparent);
+}
+
+/* Fade the bottom edge only — for cut-outs that are cropped at the floor. */
+.edge-fade-bottom {
+  -webkit-mask-image: linear-gradient(to top, transparent, #000 14%);
+  mask-image: linear-gradient(to top, transparent, #000 14%);
+}
+
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }

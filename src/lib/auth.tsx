@@ -12,6 +12,8 @@ export interface AuthUser {
   /** Optional uploaded profile photo (data URL). Empty when not set. */
   avatarUrl?: string
   phone?: string
+  /** Landlord's boarding house / property name. Empty for boarders. */
+  property?: string
 }
 
 interface AuthResult {
@@ -22,7 +24,12 @@ interface AuthResult {
 
 interface AuthState {
   user: AuthUser | null
-  login: (email: string, password: string) => Promise<AuthResult>
+  /**
+   * Signs in. Pass `expectedRole` when the UI already knows which portal the user
+   * is entering, so an account can't sign in through the wrong one (e.g. a boarder
+   * account on the landlord sign-in form).
+   */
+  login: (email: string, password: string, expectedRole?: UserRole) => Promise<AuthResult>
   /** Self-registration — creates a boarder account and signs it in. */
   register: (input: { name: string; email: string; password: string; phone?: string }) => Promise<AuthResult>
   logout: () => void
@@ -51,9 +58,20 @@ function loadUser(): AuthUser | null {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(loadUser)
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string, expectedRole?: UserRole) => {
     try {
       const found = await loginAPI(email, password)
+      // Reject a role mismatch before any session is created, otherwise a boarder
+      // could sign in through the landlord form (and vice versa).
+      if (expectedRole && found.role !== expectedRole) {
+        return {
+          ok: false,
+          error:
+            found.role === 'boarder'
+              ? 'That account is registered as a boarder. Go back and choose “I am a Boarder” to sign in.'
+              : 'That account is registered as a landlord. Go back and choose “I am a Landlord” to sign in.',
+        }
+      }
       const authUser: AuthUser = {
         id: found.id,
         email: found.email,

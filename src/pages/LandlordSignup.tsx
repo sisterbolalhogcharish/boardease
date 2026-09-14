@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion'
 import {
   Building2,
   CheckCircle2,
@@ -13,7 +14,7 @@ import {
   X,
 } from 'lucide-react'
 import { useState, useRef, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { registerLandlordAPI } from '../lib/api'
 import { cn } from '../lib/utils'
@@ -273,18 +274,40 @@ export default function LandlordSignup() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-navy-950 via-navy-800 to-brand-700 px-4 py-12">
-      {/* Background decorations */}
-      <div className="hero-grid-bg absolute inset-0" />
-      <div className="hero-blob -top-20 left-1/4 h-96 w-96 bg-brand-500" />
-      <div className="hero-blob right-10 top-40 h-80 w-80 bg-mint-400" />
+    // The background layers paint immediately (no fade on this wrapper) so arriving
+    // from the sign-in page never flashes the light page colour; only the content
+    // animates, matching the boarder sign-up transition.
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-black/60 lg:flex-row">
+      {/* ---------- Artwork background — matches the boarder sign-in page ---------- */}
+      {/* Locked artwork layer: pinned to the viewport (not the page), so the picture
+          keeps exactly the same size across steps and scrolling. Height matches the
+          screen, width follows its own aspect ratio (nothing cropped top or bottom),
+          anchored left with the overflow clipped and the right side masked so the
+          artwork fades into the dark form side instead of ending on a cut. */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
+        <img
+          src="/pictures/banner.png"
+          alt=""
+          className="absolute left-0 top-0 h-full w-auto max-w-none [mask-image:linear-gradient(to_right,#000_45%,#000e_58%,#000c_68%,#0009_77%,#0006_85%,#0003_92%,#0000)]"
+        />
+      </div>
+      {/* Blurry black treatment over the right half only (the form side). Full-width
+          on phones, with a masked left edge so the dark field fades in gradually. */}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-md lg:left-auto lg:w-1/2 lg:bg-black/60 lg:backdrop-blur-xl lg:[mask-image:linear-gradient(to_right,#0000,#0003_10%,#0009_22%,#000d_32%,#000_45%)]" />
 
-      <div className="relative z-10 w-full max-w-lg">
+      {/* ---------- Form column — right side on desktop. The card caps its own width,
+          so this mirrors the boarder sign-in page. ---------- */}
+      <motion.div
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.32, ease: 'easeOut' }}
+        className="relative z-10 flex w-full flex-1 flex-col justify-center px-4 py-12 sm:px-8 lg:ml-auto lg:w-[40%] lg:flex-none lg:px-10 lg:py-16"
+      >
         {/* Header */}
         <div className="mb-8 text-center">
-          <a href="/" className="inline-flex items-center gap-2 text-white/60 text-sm font-medium transition hover:text-white/90">
+          <Link to="/" className="inline-flex items-center gap-2 text-white/60 text-sm font-medium transition hover:text-white/90">
             ← Back to BoardEase
-          </a>
+          </Link>
           <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-white">
             Sign up as Landlord
           </h1>
@@ -294,7 +317,7 @@ export default function LandlordSignup() {
         </div>
 
         {/* Card */}
-        <div className="rounded-[22px] border border-white/10 bg-white/5 p-6 shadow-float backdrop-blur-xl sm:p-8">
+        <div className="mx-auto w-full max-w-lg rounded-[22px] border border-white/10 bg-white/5 p-6 shadow-float backdrop-blur-xl sm:p-8">
           {/* ===== STEP 1: FORM ===== */}
           {step === 'form' && (
             <form onSubmit={handleStep1Submit} className="space-y-5">
@@ -405,8 +428,17 @@ export default function LandlordSignup() {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Re-enter your password"
-                    className="w-full rounded-xl border border-white/15 bg-white/5 py-3 pl-10 pr-4 text-sm text-white placeholder-navy-400 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-400/30"
+                    className="w-full rounded-xl border border-white/15 bg-white/5 py-3 pl-10 pr-11 text-sm text-white placeholder-navy-400 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-400/30"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPw(s => !s)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-navy-400 transition hover:text-white"
+                    tabIndex={-1}
+                    aria-label={showConfirmPw ? 'Hide password' : 'Show password'}
+                  >
+                    {showConfirmPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
               </div>
 
@@ -756,7 +788,7 @@ export default function LandlordSignup() {
 
         {/* Step indicator */}
         <div className="mt-6 flex items-center justify-center gap-2">
-          {(['form', 'location', 'documents'] as Step[]).map((s, i) => {
+          {(['form', 'location', 'documents'] as Step[]).map((s) => {
             const currentIdx = stepIndex(step)
             const targetIdx = stepIndex(s)
             let width = 'w-4'
@@ -781,20 +813,20 @@ export default function LandlordSignup() {
         {step === 'form' && (
           <p className="mt-6 text-center text-xs text-white/50">
             Already have an account?{' '}
-            <a href="/login" className="font-semibold text-brand-300 transition hover:text-brand-200">
+            <Link to="/login" className="font-semibold text-brand-300 transition hover:text-brand-200">
               Sign in
-            </a>
+            </Link>
           </p>
         )}
 
         {step !== 'form' && (
           <p className="mt-6 text-center text-xs text-white/50">
-            <a href="/login" className="font-semibold text-brand-300 transition hover:text-brand-200">
+            <Link to="/login" className="font-semibold text-brand-300 transition hover:text-brand-200">
               Sign in instead
-            </a>
+            </Link>
           </p>
         )}
-      </div>
+      </motion.div>
     </div>
   )
 }

@@ -29,6 +29,7 @@ import BoarderCompare from './pages/boarder/BoarderCompare'
 import BoarderReservations from './pages/boarder/BoarderReservations'
 import BoarderMessages from './pages/boarder/BoarderMessages'
 import BoarderProfile from './pages/boarder/BoarderProfile'
+import VirtualAssistant from './components/boarder/VirtualAssistant'
 
 function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode; requiredRole?: 'landlord' | 'boarder' }) {
   const { user } = useAuth()
@@ -36,6 +37,12 @@ function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode;
   if (requiredRole && user.role !== requiredRole) {
     return <Navigate to={user.role === 'landlord' ? '/dashboard' : '/boarder'} replace />
   }
+  return <>{children}</>
+}
+
+function BoarderOnly({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth()
+  if (!user || user.role !== 'boarder') return null
   return <>{children}</>
 }
 
@@ -96,8 +103,11 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {/* Global boarder/discovery helpers */}
+      {/* Global discovery helpers — compare dock is public-facing; VirtualAssistant is boarder-only and only appears after login */}
       <CompareDock />
+      <BoarderOnly>
+        <VirtualAssistant />
+      </BoarderOnly>
     </>
   )
 }

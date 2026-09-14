@@ -1,9 +1,8 @@
 import { motion } from 'framer-motion'
-import { BadgeCheck, Building2, MapPin, Search, ShieldCheck, Sparkles, Star } from 'lucide-react'
+import { Building2, MapPin, Search, Sparkles } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLanguage } from '../../lib/i18n'
-import { HouseImage } from '../ui'
 
 const MUNICIPALITY_VALUES = ['Anywhere', 'San Juan', 'Siquijor', 'Larena', 'Lazi', 'Maria', 'Enrique Villanueva'] as const
 const ROOM_TYPE_VALUES = ['Any type', 'Bedspace', 'Single', 'Double', 'Studio'] as const
@@ -39,7 +38,6 @@ export default function Hero() {
 
   return (
     <section className="relative overflow-hidden bg-gradient-to-br from-navy-950 via-navy-800 to-brand-700 pb-24 pt-32 text-white sm:pb-32">
-      <div className="hero-grid-bg absolute inset-0" />
       <div className="hero-blob -top-20 left-1/4 h-96 w-96 bg-brand-500" />
       <div className="hero-blob right-10 top-40 h-80 w-80 bg-mint-400" />
 
@@ -90,47 +88,14 @@ export default function Hero() {
           transition={{ duration: 0.8, delay: 0.15, ease: 'easeOut' }}
           className="relative hidden lg:block"
         >
-          <div className="relative mx-auto h-[440px] w-[380px] rotate-2 overflow-hidden rounded-[28px] shadow-float ring-1 ring-white/20">
-            <HouseImage src="https://picsum.photos/seed/hero-main/800/1000" alt="Boarding house" className="h-full w-full" />
-            <div className="absolute inset-0 bg-gradient-to-t from-navy-950/60 via-transparent to-transparent" />
+          <div className="edge-fade-bottom relative mx-auto aspect-[3/2] w-full max-w-[540px] -translate-x-[84px] scale-150">
+            <img
+              src="/pictures/landlord-boarder%20coms.png"
+              alt="Landlord and boarder chatting on BoardEase"
+              draggable={false}
+              className="h-full w-full object-contain drop-shadow-2xl"
+            />
           </div>
-          <div className="absolute -left-10 top-16 h-44 w-56 -rotate-6 overflow-hidden rounded-2xl shadow-float ring-1 ring-white/20">
-            <HouseImage src="https://picsum.photos/seed/hero-room/600/500" alt="Room" className="h-full w-full" />
-          </div>
-          <motion.div
-            animate={{ y: [0, -10, 0] }}
-            transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-            className="glass-dark absolute -right-4 top-8 flex items-center gap-2 rounded-2xl px-4 py-3 shadow-float"
-          >
-            <ShieldCheck size={18} className="text-mint-400" />
-            <div>
-              <p className="text-xs font-bold">{t('hero.verifiedLandlord')}</p>
-              <p className="text-[10px] text-navy-200">{t('hero.checkedApproved')}</p>
-            </div>
-          </motion.div>
-          <motion.div
-            animate={{ y: [0, 10, 0] }}
-            transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
-            className="glass-dark absolute -left-6 bottom-24 flex items-center gap-3 rounded-2xl px-4 py-3 shadow-float"
-          >
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-mint-400/20 text-mint-300">
-              <Building2 size={17} />
-            </span>
-            <div>
-              <p className="text-sm font-bold">₱2,500/mo</p>
-              <p className="flex items-center gap-1 text-[10px] text-navy-200">
-                <Star size={10} className="fill-amber-400 text-amber-400" /> 4.9 · Sunset Boarding House
-              </p>
-            </div>
-          </motion.div>
-          <motion.div
-            animate={{ y: [0, -8, 0] }}
-            transition={{ duration: 4.5, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
-            className="glass-dark absolute bottom-4 right-10 flex items-center gap-2 rounded-full px-4 py-2 shadow-float"
-          >
-            <BadgeCheck size={15} className="text-mint-400" />
-            <p className="text-xs font-semibold">{t('hero.bedsLeft')}</p>
-          </motion.div>
         </motion.div>
       </div>
 

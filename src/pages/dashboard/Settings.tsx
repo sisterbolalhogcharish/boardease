@@ -1,10 +1,10 @@
-import { Camera, Check, Download, Languages, Save, ShieldCheck, Trash2 } from 'lucide-react'
+import { Camera, Check, Download, Languages, Mail, Phone, Save, ShieldCheck, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useLanguage, type LangCode } from '../../lib/i18n'
 import { useAuth } from '../../lib/auth'
 import { Avatar } from '../../components/ui'
-import { useUpdateProfile } from '../../lib/hooks'
-import { cn, fileToSquareDataUrl, prettyDate } from '../../lib/utils'
+import { useUpdateLandlordProfile, useUpdateProfile } from '../../lib/hooks'
+import { cn, fileToSquareDataUrl } from '../../lib/utils'
 
 const TOGGLES = [
   { key: 'rentDue', label: 'Rent due reminders', desc: 'Notify 3 days before rent is due.' },
@@ -19,6 +19,7 @@ export default function Settings() {
   const { user, updateUser } = useAuth()
   const { lang, setLang, t, languages } = useLanguage()
   const updateProfile = useUpdateProfile(user?.id?.toString())
+  const updateLandlordProfile = useUpdateLandlordProfile(user?.id?.toString())
   const [saved, setSaved] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
@@ -36,26 +37,40 @@ export default function Settings() {
   const [form, setForm] = useState({
     name: user?.name ?? '',
     phone: user?.phone ?? '',
-    property: '',
+    property: user?.property ?? '',
   })
 
   useEffect(() => {
-    setForm((prev) => ({ ...prev, name: user?.name ?? '', phone: user?.phone ?? '' }))
-  }, [user?.name, user?.phone])
+    setForm((prev) => ({
+      ...prev,
+      name: user?.name ?? '',
+      phone: user?.phone ?? '',
+      property: user?.property ?? '',
+    }))
+  }, [user?.name, user?.phone, user?.property])
 
   const pickPhoto = () => photoInput.current?.click()
+
+  const runProfileMutation = async (patch: Parameters<typeof updateLandlordProfile['mutateAsync']>[0]) => {
+    if (updateLandlordProfile) {
+      await updateLandlordProfile.mutateAsync(patch)
+      return
+    }
+    if (updateProfile) {
+      await updateProfile.mutateAsync(patch)
+    }
+  }
 
   const onPhotoChosen = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file || !user) return
-    if (!updateProfile) return
     setNotice('')
     setError('')
     setPhotoBusy(true)
     try {
       const dataUrl = await fileToSquareDataUrl(file)
-      await updateProfile.mutateAsync({ userId: user.id.toString(), avatarUrl: dataUrl })
+      await runProfileMutation({ userId: user.id.toString(), avatarUrl: dataUrl })
       updateUser({ avatarUrl: dataUrl })
       setNotice('Profile photo updated.')
     } catch (err) {
@@ -66,12 +81,12 @@ export default function Settings() {
   }
 
   const removePhoto = async () => {
-    if (!user || !updateProfile) return
+    if (!user) return
     setNotice('')
     setError('')
     setPhotoBusy(true)
     try {
-      await updateProfile.mutateAsync({ userId: user.id.toString(), avatarUrl: '' })
+      await runProfileMutation({ userId: user.id.toString(), avatarUrl: '' })
       updateUser({ avatarUrl: undefined })
       setNotice('Profile photo removed.')
     } catch (err) {
@@ -83,17 +98,18 @@ export default function Settings() {
 
   const save = async (e: FormEvent) => {
     e.preventDefault()
-    if (!user || !updateProfile) return
+    if (!user) return
     if (!form.name.trim()) {
       setError('Full name is required.')
       return
     }
     setError('')
     try {
-      await updateProfile.mutateAsync({
+      await runProfileMutation({
         userId: user.id.toString(),
         name: form.name.trim(),
         phone: form.phone.trim() || undefined,
+        property: form.property.trim() || undefined,
       })
       updateUser({
         name: form.name.trim(),
@@ -111,10 +127,10 @@ export default function Settings() {
   const field = (
     key: keyof typeof form,
     label: string,
-    opts?: { type?: string; placeholder?: string; optional?: boolean },
+    opts?: { type?: string; placeholder?: string; optional?: boolean; help?: string },
   ) => (
-    <div>
-      <label htmlFor={`settings-${key}`} className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-mut">
+    <div className="grid gap-1.5">
+      <label htmlFor={`settings-${key}`} className="text-xs font-semibold uppercase tracking-wider text-mut">
         {label} {opts?.optional ? <span className="font-normal normal-case">(optional)</span> : null}
       </label>
       <input
@@ -125,71 +141,81 @@ export default function Settings() {
         onChange={(e) => setForm((prev) => ({ ...prev, [key]: e.target.value }))}
         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-navy-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
       />
+      {opts?.help && <p className="text-[11px] text-mut">{opts.help}</p>}
     </div>
   )
 
   return (
     <form onSubmit={save} className="max-w-3xl space-y-5">
-      {updateProfile ? (
+      {user ? (
         <>
           <div className="rounded-[18px] border border-slate-100 bg-white p-6 shadow-card">
-            <h3 className="font-bold text-navy-800">Landlord profile</h3>
-            <div className="mt-5 flex items-center gap-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-navy-800">Landlord profile</h3>
+              <span className="rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-brand-600">
+                Account owner
+              </span>
+            </div>
+            <p className="mt-1 text-sm leading-relaxed text-ink">
+              This is your landlord account: the name, contact number and profile photo show up whenever you appear in BoardEase — on your boarding house page, in messages and in boarder communications.
+            </p>
+
+            {/* Identity card */}
+            <div className="mt-6 flex flex-wrap items-center gap-5 rounded-[16px] border border-slate-100 bg-surface/40 p-5">
               <Avatar
                 src={user?.avatarUrl}
                 name={user?.name}
                 color={user?.avatarColor}
                 rounded="full"
-                className="h-16 w-16 text-xl"
+                className="h-16 w-16 rounded-full text-xl"
               />
               <div className="min-w-0 flex-1">
-                <p className="font-bold text-navy-800">{user?.name ?? 'Landlord account'}</p>
-                <p className="text-xs text-mut">Landlord · Sunset Boarding House</p>
+                <p className="text-base font-bold text-navy-800">{user?.name ?? 'Landlord account'}</p>
+                <p className="mt-0.5 flex items-center gap-1.5 text-sm text-ink">
+                  <Mail size={13} className="text-mut" /> {user?.email}
+                </p>
+                {user?.phone && (
+                  <p className="mt-1 flex items-center gap-1.5 text-sm text-ink">
+                    <Phone size={13} className="text-mut" /> {user.phone}
+                  </p>
+                )}
               </div>
+              <input
+                ref={photoInput}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={onPhotoChosen}
+              />
+              <button
+                type="button"
+                onClick={pickPhoto}
+                disabled={photoBusy}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-navy-800 transition hover:border-brand-300 hover:text-brand-600 disabled:opacity-60"
+              >
+                <Camera size={14} /> {user?.avatarUrl ? 'Change photo' : 'Add photo'}
+              </button>
+              {user?.avatarUrl && (
+                <button
+                  type="button"
+                  onClick={removePhoto}
+                  disabled={photoBusy}
+                  className="inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold text-danger transition hover:bg-red-50 disabled:opacity-60"
+                >
+                  <Trash2 size={14} /> Remove
+                </button>
+              )}
             </div>
+            {user?.avatarUrl && <p className="mt-2 text-[11px] text-mut">A profile photo is attached to this account.</p>}
+            {!user?.avatarUrl && (
+              <p className="mt-2 text-[11px] text-mut">No profile photo yet. Add one and your avatar updates everywhere.</p>
+            )}
 
-            <div className="mt-6 rounded-[14px] border border-slate-100 bg-surface/60 p-4">
-              <p className="text-sm font-bold text-navy-800">Profile photo</p>
-              <p className="mt-1 text-xs leading-relaxed text-ink">
-                Attach a picture and your avatar updates everywhere. Images are resized in your browser before saving, so a
-                JPG, PNG or WebP of any size works. Optional.
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-4">
-                <Avatar
-                  src={user?.avatarUrl}
-                  name={user?.name}
-                  color={user?.avatarColor}
-                  rounded="2xl"
-                  className="h-14 w-14 text-base"
-                />
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={pickPhoto}
-                    disabled={photoBusy}
-                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-navy-800 transition hover:border-brand-300 hover:text-brand-600 disabled:opacity-60"
-                  >
-                    <Camera size={14} /> {user?.avatarUrl ? 'Change photo' : 'Upload photo'}
-                  </button>
-                  {user?.avatarUrl && (
-                    <button
-                      type="button"
-                      onClick={removePhoto}
-                      disabled={photoBusy}
-                      className="inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold text-danger transition hover:bg-red-50 disabled:opacity-60"
-                    >
-                      <Trash2 size={14} /> Remove
-                    </button>
-                  )}
-                </div>
-              </div>
-              {user?.avatarUrl && <p className="mt-2 text-[11px] text-mut">A profile photo is attached to this account.</p>}
-            </div>
-
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              {field('name', 'Full name')}
+            <div className="mt-6 grid gap-5 sm:grid-cols-2">
+              {field('name', 'Full name', { help: 'This is the name boarders see on your boarding house page and messages.' })}
+              {field('phone', 'Contact number', { placeholder: '0917 000 0000', optional: true, help: 'Used when boarders contact you about a room or reservation.' })}
               <div>
-                <label htmlFor="settings-email" className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-mut">
+                <label htmlFor="settings-email" className="text-xs font-semibold uppercase tracking-wider text-mut">
                   Email
                 </label>
                 <input
@@ -198,22 +224,17 @@ export default function Settings() {
                   readOnly
                   className="w-full cursor-not-allowed rounded-xl border border-slate-200 bg-surface px-3 py-2.5 text-sm text-mut outline-none"
                 />
+                <p className="mt-1 text-[11px] text-mut">Your login email. To change it, contact support.</p>
               </div>
-              {field('phone', 'Contact number', { placeholder: '0917 000 0000', optional: true })}
-              {field('property', 'Property / boarding house name', { placeholder: 'Sunset Boarding House', optional: true })}
-              <div className="sm:col-start-2">
-                <p className="mt-1.5 text-[11px] text-mut">
-                  Property name is saved locally on this device. To appear on your listing, update it in your boarding house details.
-                </p>
-              </div>
+              {field('property', 'Property / boarding house name', { placeholder: 'Sunset Boarding House', optional: true, help: 'Your main boarding house name. Update it in house details to change your listing.' })}
             </div>
           </div>
 
           <div className="rounded-[18px] border border-slate-100 bg-white p-6 shadow-card">
             <h3 className="flex items-center gap-2 font-bold text-navy-800">
-              <Languages size={17} className="text-brand-500" /> {t('settings.language')}
+              <Languages size={17} className="text-brand-500" /> {t('settings.language') ?? 'Language'}
             </h3>
-            <p className="mt-0.5 text-xs text-mut">{t('settings.languageHint')}</p>
+            <p className="mt-0.5 text-xs text-mut">{t('settings.languageHint') ?? 'Choose your preferred interface language.'}</p>
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
               {languages.map(({ code, label }) => (
                 <button
@@ -280,11 +301,11 @@ export default function Settings() {
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="submit"
-          disabled={saved || updateProfile?.isPending}
+          disabled={saved || updateLandlordProfile?.isPending || updateProfile?.isPending}
           className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-6 py-3 text-sm font-bold text-white shadow-[0_10px_24px_rgb(30_115_232/0.35)] transition hover:-translate-y-0.5 hover:bg-brand-600 disabled:opacity-70"
         >
           {saved ? <Check size={16} /> : <Save size={16} />}
-          {saved ? 'Saving…' : updateProfile?.isPending ? 'Saving…' : 'Save changes'}
+          {saved ? 'Saving…' : (updateLandlordProfile?.isPending ?? updateProfile?.isPending ?? false) ? 'Saving…' : 'Save changes'}
         </button>
         {notice && (
           <p className="rounded-lg bg-mint-50 px-3 py-2 text-sm font-medium text-mint-600">{notice}</p>
@@ -294,13 +315,6 @@ export default function Settings() {
         )}
       </div>
 
-      <input
-        ref={photoInput}
-        type="file"
-        accept="image/png,image/jpeg,image/webp"
-        className="hidden"
-        onChange={onPhotoChosen}
-      />
     </form>
   )
 }

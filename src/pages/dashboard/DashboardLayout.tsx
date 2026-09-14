@@ -22,7 +22,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { useMarkNotificationsRead, useNotifications } from '../../lib/hooks'
 import { cn, timeAgo } from '../../lib/utils'
-import { Spinner } from '../../components/ui'
+import { Avatar, Spinner } from '../../components/ui'
 
 const NAV = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -111,13 +111,14 @@ export default function DashboardLayout() {
           AI Assistant
           <span className="ml-auto rounded-full bg-mint-400/20 px-2 py-0.5 text-[10px] font-bold text-mint-300">NEW</span>
         </Link>
-      </nav>
-
-      <div className="border-t border-white/10 p-4">
+      </nav>        <div className="border-t border-white/10 p-4">
         <div className="flex items-center gap-3 rounded-xl bg-white/5 p-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-mint-400 text-sm font-bold text-white">
-            RC
-          </span>
+          <Avatar
+            name="Rosario C. Cabasan"
+            color="#1E73E8"
+            className="h-10 w-10 text-sm"
+            rounded="full"
+          />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-bold text-white">Rosario C. Cabasan</p>
             <p className="truncate text-[11px] text-navy-300">Sunset Boarding House · Standard</p>
@@ -183,7 +184,7 @@ export default function DashboardLayout() {
               <button
                 onClick={() => {
                   setNotifOpen((o) => !o)
-                  if (!notifOpen && unread > 0) markRead.mutate()
+                  if (!notifOpen && unread > 0) markRead.mutate(undefined)
                 }}
                 className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-navy-700 transition hover:border-brand-300 hover:text-brand-500"
                 aria-label="Notifications"

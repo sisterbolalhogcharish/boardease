@@ -298,6 +298,14 @@ export function useUpdateProfile(userId?: string) {
   })
 }
 
+export function useUpdateLandlordProfile(userId?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (patch: api.LandlordProfilePatch) => api.updateLandlordProfile(patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['boarder-profile', userId] }),
+  })
+}
+
 export function useCreateReservation(userId?: string) {
   const qc = useQueryClient()
   return useMutation({
