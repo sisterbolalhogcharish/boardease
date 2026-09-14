@@ -12,7 +12,7 @@ export type LangCode = 'en' | 'fil' | 'ceb'
 
 export const LANGUAGES: { code: LangCode; label: string; short: string }[] = [
   { code: 'en', label: 'English', short: 'EN' },
-  { code: 'fil', label: 'Filipino', short: 'FIL' },
+  { code: 'fil', label: 'Tagalog', short: 'TL' },
   { code: 'ceb', label: 'Cebuano (Bisaya)', short: 'CEB' },
 ]
 

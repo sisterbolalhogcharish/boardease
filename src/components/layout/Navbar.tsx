@@ -259,7 +259,7 @@ export default function Navbar({ solid }: { solid?: boolean }) {
   return (
     <header
       className={cn(
-        'fixed inset-x-0 top-0 z-50 transition-all duration-300 overflow-hidden',
+        'fixed inset-x-0 top-0 z-50 transition-all duration-300',
         'md:left-[10%] md:right-[10%] md:top-4 md:rounded-full md:inset-x-auto',
         open ? 'rounded-none' : 'md:rounded-full',
         'glass border border-slate-200/70 shadow-[0_8px_30px_rgb(11_45_99/0.08)]',
