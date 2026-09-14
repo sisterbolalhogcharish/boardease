@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { loginAPI, registerAPI } from './api'
 
-export type UserRole = 'landlord' | 'boarder'
+export type UserRole = 'landlord' | 'boarder' | 'admin'
 
 export interface AuthUser {
   id: number
@@ -37,6 +37,7 @@ interface AuthState {
   updateUser: (patch: Partial<Record<keyof AuthUser | 'property', AuthUser[keyof AuthUser] | string | undefined>>) => void
   isLandlord: boolean
   isBoarder: boolean
+  isAdmin: boolean
 }
 
 const AuthContext = createContext<AuthState | null>(null)
@@ -64,12 +65,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Reject a role mismatch before any session is created, otherwise a boarder
       // could sign in through the landlord form (and vice versa).
       if (expectedRole && found.role !== expectedRole) {
+        const roleLabels: Record<string, string> = { boarder: 'Boarder', landlord: 'Landlord', admin: 'Admin' }
         return {
           ok: false,
-          error:
-            found.role === 'boarder'
-              ? 'That account is registered as a boarder. Go back and choose “I am a Boarder” to sign in.'
-              : 'That account is registered as a landlord. Go back and choose “I am a Landlord” to sign in.',
+          error: `That account is registered as a ${roleLabels[found.role] ?? found.role}. Go back and choose the correct role to sign in.`,
         }
       }
       const authUser: AuthUser = {
@@ -135,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       updateUser,
       isLandlord: user?.role === 'landlord',
       isBoarder: user?.role === 'boarder',
+      isAdmin: user?.role === 'admin',
     }),
     [user, login, register, logout, updateUser],
   )

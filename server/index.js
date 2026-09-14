@@ -83,7 +83,7 @@ async function houseCardFromRow(h) {
     totalRooms,
     occupiedRooms,
     vacant,
-    status: vacant <= 0 ? 'full' : vacant <= Math.max(2, Math.round(totalRooms * 0.1)) ? 'almost-full' : 'available',
+    status: totalRooms === 0 ? 'available' : vacant <= 0 ? 'full' : vacant <= Math.max(2, Math.round(totalRooms * 0.1)) ? 'almost-full' : 'available',
     wifi: !!h.wifi,
     aircon: !!h.aircon,
     kitchen: !!h.kitchen,
@@ -263,36 +263,102 @@ app.post('/api/auth/landlord-register', async (req, res) => {
       })
     }
 
-    // --- Check for existing email ---
-    const [existing] = await pool.query('SELECT id FROM users WHERE email = ?', [cleanEmail])
-    if (existing.length > 0) {
-      return res.status(409).json({ error: 'An account with this email already exists. Try signing in instead.' })
-    }
-
-    // --- Create user ---
+    // --- Create the account ---
+    // The user row, landlord profile and documents must land together. Running
+    // them as separate statements meant a failure half-way through (say the
+    // documents insert) still left the user row behind, so the next attempt was
+    // rejected with "account already exists" for an account that never finished.
     const AVATAR_COLORS = ['#1E73E8', '#33C7A5', '#0B2D63', '#F59E0B', '#EF4444']
-    const avatarColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]
-    const [userResult] = await pool.query(
-      'INSERT INTO users (email, password, role, name, phone, avatar_color) VALUES (?, ?, ?, ?, ?, ?)',
-      [cleanEmail, password, 'landlord', String(fullName).trim(), String(mobileNumber).trim(), avatarColor]
-    )
-    const userId = userResult.insertId
+    let avatarColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]
+    // `landlords.location_pref` is varchar(255) and the address comes from a
+    // reverse-geocode lookup, which can run long — trim it rather than let MySQL
+    // reject the whole sign-up with "Data too long for column".
+    const cleanLocationPref = String(locationPref).trim().slice(0, 255)
+    const conn = await pool.getConnection()
+    let userId
+    let landlordId
+    try {
+      await conn.beginTransaction()
 
-    // --- Create landlord profile with location preference ---
-    const [landlordResult] = await pool.query(
-      'INSERT INTO landlords (user_id, location_pref, location_lat, location_lng) VALUES (?, ?, ?, ?)',
-      [userId, String(locationPref).trim(),
-       locationLat ? parseFloat(locationLat) : null,
-       locationLng ? parseFloat(locationLng) : null]
-    )
-    const landlordId = landlordResult.insertId
-
-    // --- Store submitted documents (always includes required Valid ID + Documents) ---
-    for (const doc of preparedDocs) {
-      await pool.query(
-        'INSERT INTO landlord_documents (landlord_id, doc_type, doc_name, doc_url) VALUES (?, ?, ?, ?)',
-        [landlordId, doc.docType, String(doc.docName).trim(), String(doc.docUrl).trim()]
+      const [existing] = await conn.query(
+        `SELECT u.id, u.role, u.password, u.avatar_color, l.id AS landlord_id,
+                (SELECT COUNT(DISTINCT d.doc_type) FROM landlord_documents d
+                  WHERE d.landlord_id = l.id
+                    AND d.doc_type IN ('valid_id', 'legal_documents')) AS required_doc_count
+           FROM users u LEFT JOIN landlords l ON l.user_id = u.id
+          WHERE u.email = ?`,
+        [cleanEmail]
       )
+
+      if (existing.length > 0) {
+        const prev = existing[0]
+        // An interrupted sign-up leaves the email behind without a usable
+        // landlord account: either the landlord profile or one of the two
+        // required documents never landed. Let that same person resume it
+        // instead of stranding the address — the password must match, so nobody
+        // else can claim it.
+        const incompleteSignup =
+          prev.role === 'landlord' &&
+          (!prev.landlord_id || Number(prev.required_doc_count) < 2) &&
+          prev.password === password
+
+        if (!incompleteSignup) {
+          await conn.rollback()
+          return res.status(409).json({ error: 'An account with this email already exists. Try signing in instead.' })
+        }
+
+        userId = prev.id
+        avatarColor = prev.avatar_color || avatarColor
+        await conn.query(
+          'UPDATE users SET name = ?, phone = ?, password = ? WHERE id = ?',
+          [String(fullName).trim(), String(mobileNumber).trim(), password, userId]
+        )
+      } else {
+        const [userResult] = await conn.query(
+          'INSERT INTO users (email, password, role, name, phone, avatar_color) VALUES (?, ?, ?, ?, ?, ?)',
+          [cleanEmail, password, 'landlord', String(fullName).trim(), String(mobileNumber).trim(), avatarColor]
+        )
+        userId = userResult.insertId
+      }
+
+      // --- Landlord profile with location preference ---
+      if (existing.length > 0 && existing[0].landlord_id) {
+        // Resuming an interrupted sign-up: reuse the profile row, refresh its
+        // location, and clear the documents the failed attempt left behind so
+        // the resubmitted ones are not stored twice.
+        landlordId = existing[0].landlord_id
+        await conn.query(
+          'UPDATE landlords SET location_pref = ?, location_lat = ?, location_lng = ? WHERE id = ?',
+          [cleanLocationPref,
+           locationLat ? parseFloat(locationLat) : null,
+           locationLng ? parseFloat(locationLng) : null,
+           landlordId]
+        )
+        await conn.query('DELETE FROM landlord_documents WHERE landlord_id = ?', [landlordId])
+      } else {
+        const [landlordResult] = await conn.query(
+          'INSERT INTO landlords (user_id, location_pref, location_lat, location_lng) VALUES (?, ?, ?, ?)',
+          [userId, cleanLocationPref,
+           locationLat ? parseFloat(locationLat) : null,
+           locationLng ? parseFloat(locationLng) : null]
+        )
+        landlordId = landlordResult.insertId
+      }
+
+      // --- Store submitted documents (always includes required Valid ID + Documents) ---
+      for (const doc of preparedDocs) {
+        await conn.query(
+          'INSERT INTO landlord_documents (landlord_id, doc_type, doc_name, doc_url) VALUES (?, ?, ?, ?)',
+          [landlordId, doc.docType, String(doc.docName).trim(), String(doc.docUrl).trim()]
+        )
+      }
+
+      await conn.commit()
+    } catch (err) {
+      await conn.rollback().catch(() => {})
+      throw err
+    } finally {
+      conn.release()
     }
 
     res.json({
@@ -304,12 +370,21 @@ app.post('/api/auth/landlord-register', async (req, res) => {
       avatar_color: avatarColor,
       avatar_url: null,
       landlordId,
-      locationPref: String(locationPref).trim(),
+      locationPref: cleanLocationPref,
       locationLat: locationLat ? parseFloat(locationLat) : null,
       locationLng: locationLng ? parseFloat(locationLng) : null,
     })
   } catch (err) {
     console.error('Landlord register error:', err)
+    // A missing column/table is the usual reason landlord sign-up 500s on a
+    // database that predates the landlord migrations — say so instead of a bare
+    // "Server error", which sends people hunting through the wrong code.
+    const schemaIssue = ['ER_BAD_FIELD_ERROR', 'ER_NO_SUCH_TABLE', 'ER_NO_DEFAULT_FOR_FIELD', 'ER_BAD_NULL_ERROR'].includes(err.code)
+    if (schemaIssue) {
+      return res.status(500).json({
+        error: 'The landlord database schema is incomplete. Run the SQL in database/boardease.sql and database/landlord_documents.sql, then restart the API server (npm run dev).',
+      })
+    }
     res.status(500).json({ error: 'Server error' })
   }
 })
@@ -317,6 +392,18 @@ app.post('/api/auth/landlord-register', async (req, res) => {
 /* ================================================================
    HOUSES (Boarding Houses)
    ================================================================ */
+
+/**
+ * Public listings only surface houses whose landlord is on a paid plan.
+ *
+ * A landlord with no subscription still gets a fully editable listing in
+ * "My Boarding House", but it stays a private draft: it never appears in
+ * Explore, featured, locations or "similar houses". Written as an EXISTS
+ * subquery so it works with or without a `landlords` join.
+ */
+const PUBLISHED_HOUSE_SQL =
+  "EXISTS (SELECT 1 FROM landlords pl WHERE pl.id = bh.landlord_id AND COALESCE(pl.subscription, 'none') <> 'none')"
+
 app.get('/api/houses', async (req, res) => {
   try {
     const {
@@ -332,11 +419,11 @@ app.get('/api/houses', async (req, res) => {
 
     let sql = `
       SELECT bh.*, l.business_name AS owner_name, l.verified AS owner_verified,
-        (SELECT COUNT(*) FROM rooms r WHERE r.house_id = bh.id) AS total_rooms_calc,
+        (SELECT COALESCE(SUM(r.capacity), 0) FROM rooms r WHERE r.house_id = bh.id) AS total_rooms_calc,
         (SELECT COALESCE(SUM(r.occupied), 0) FROM rooms r WHERE r.house_id = bh.id) AS occupied_rooms_calc
       FROM boarding_houses bh
       LEFT JOIN landlords l ON l.id = bh.landlord_id
-      WHERE 1=1
+      WHERE ${PUBLISHED_HOUSE_SQL}
     `
     const params = []
 
@@ -424,7 +511,9 @@ app.get('/api/houses', async (req, res) => {
         totalRooms: h.total_rooms_calc,
         occupiedRooms: h.occupied_rooms_calc,
         vacant,
-        status: vacant <= 0 ? 'full' : vacant <= Math.max(2, Math.round(h.total_rooms_calc * 0.1)) ? 'almost-full' : 'available',
+        // A listing with no rooms yet is brand new, not full — calling it "full"
+        // hid it from the "only available" filter and read as a warning.
+        status: h.total_rooms_calc === 0 ? 'available' : vacant <= 0 ? 'full' : vacant <= Math.max(2, Math.round(h.total_rooms_calc * 0.1)) ? 'almost-full' : 'available',
         wifi: !!h.wifi,
         aircon: !!h.aircon,
         kitchen: !!h.kitchen,
@@ -454,7 +543,7 @@ app.get('/api/houses', async (req, res) => {
 app.get('/api/houses/featured', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      'SELECT * FROM boarding_houses ORDER BY top_rated DESC, rating DESC LIMIT 4'
+      `SELECT bh.* FROM boarding_houses bh WHERE ${PUBLISHED_HOUSE_SQL} ORDER BY bh.top_rated DESC, bh.rating DESC LIMIT 4`
     )
     const houses = await Promise.all(rows.map(async (h) => {
       const [imgs] = await pool.query('SELECT image_url FROM house_images WHERE house_id = ? ORDER BY sort_order', [h.id])
@@ -470,7 +559,7 @@ app.get('/api/houses/featured', async (req, res) => {
         visitorPolicy: h.visitor_policy || '', curfew: h.curfew || '',
         monthlyRent: h.monthly_rent, roomTypes: types.map(t => t.type),
         gender: h.gender, totalRooms: h.total_rooms, occupiedRooms: h.occupied_rooms,
-        vacant, status: vacant <= 0 ? 'full' : vacant <= Math.max(2, Math.round(h.total_rooms * 0.1)) ? 'almost-full' : 'available',
+        vacant, status: Number(h.total_rooms) === 0 ? 'available' : vacant <= 0 ? 'full' : vacant <= Math.max(2, Math.round(h.total_rooms * 0.1)) ? 'almost-full' : 'available',
         wifi: !!h.wifi, aircon: !!h.aircon, kitchen: !!h.kitchen, laundry: !!h.laundry,
         parking: !!h.parking, petFriendly: !!h.pet_friendly,
         rating: parseFloat(h.rating) || 0, reviewsCount: h.reviews_count || 0,
@@ -509,7 +598,7 @@ app.get('/api/houses/:id', async (req, res) => {
       visitorPolicy: h.visitor_policy || '', curfew: h.curfew || '',
       monthlyRent: h.monthly_rent, roomTypes: types.map(t => t.type),
       gender: h.gender, totalRooms: h.total_rooms, occupiedRooms: h.occupied_rooms,
-      vacant, status: vacant <= 0 ? 'full' : vacant <= Math.max(2, Math.round(h.total_rooms * 0.1)) ? 'almost-full' : 'available',
+      vacant, status: Number(h.total_rooms) === 0 ? 'available' : vacant <= 0 ? 'full' : vacant <= Math.max(2, Math.round(h.total_rooms * 0.1)) ? 'almost-full' : 'available',
       wifi: !!h.wifi, aircon: !!h.aircon, kitchen: !!h.kitchen, laundry: !!h.laundry,
       parking: !!h.parking, petFriendly: !!h.pet_friendly,
       rating: parseFloat(h.rating) || 0, reviewsCount: h.reviews_count || 0,
@@ -564,7 +653,9 @@ app.get('/api/houses/:id/similar', async (req, res) => {
     if (current.length === 0) return res.json([])
     const { municipality, monthly_rent } = current[0]
     const [rows] = await pool.query(
-      'SELECT * FROM boarding_houses WHERE id != ? AND (municipality = ? OR monthly_rent <= ?) LIMIT 3',
+      `SELECT bh.* FROM boarding_houses bh
+        WHERE bh.id != ? AND (bh.municipality = ? OR bh.monthly_rent <= ?) AND ${PUBLISHED_HOUSE_SQL}
+        LIMIT 3`,
       [req.params.id, municipality, monthly_rent + 1000]
     )
     const houses = await Promise.all(rows.map(async (h) => {
@@ -580,7 +671,7 @@ app.get('/api/houses/:id/similar', async (req, res) => {
         visitorPolicy: h.visitor_policy || '', curfew: h.curfew || '',
         monthlyRent: h.monthly_rent, roomTypes: types.map(t => t.type),
         gender: h.gender, totalRooms: h.total_rooms, occupiedRooms: h.occupied_rooms,
-        vacant, status: vacant <= 0 ? 'full' : vacant <= Math.max(2, Math.round(h.total_rooms * 0.1)) ? 'almost-full' : 'available',
+        vacant, status: Number(h.total_rooms) === 0 ? 'available' : vacant <= 0 ? 'full' : vacant <= Math.max(2, Math.round(h.total_rooms * 0.1)) ? 'almost-full' : 'available',
         wifi: !!h.wifi, aircon: !!h.aircon, kitchen: !!h.kitchen, laundry: !!h.laundry,
         parking: !!h.parking, petFriendly: !!h.pet_friendly,
         rating: parseFloat(h.rating) || 0, reviewsCount: h.reviews_count || 0,
@@ -609,6 +700,7 @@ app.get('/api/locations', async (req, res) => {
         (SELECT hi.image_url FROM house_images hi WHERE hi.house_id = bh.id ORDER BY hi.sort_order LIMIT 1) AS image,
         GROUP_CONCAT(DISTINCT bh.barangay) AS barangays
       FROM boarding_houses bh
+      WHERE ${PUBLISHED_HOUSE_SQL}
       GROUP BY bh.municipality
       ORDER BY count DESC
     `)
@@ -625,11 +717,329 @@ app.get('/api/locations', async (req, res) => {
 })
 
 /* ================================================================
+   MY BOARDING HOUSE (the signed-in landlord's own listing)
+   ================================================================ */
+
+/** Parse a JSON-ish column (`rules`, `school_nearby`) into a string array. */
+function parseStringArray(value) {
+  if (Array.isArray(value)) return value.map((v) => String(v)).filter(Boolean)
+  if (typeof value !== 'string' || !value.trim()) return []
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed.map((v) => String(v)).filter(Boolean) : []
+  } catch {
+    return []
+  }
+}
+
+const trimStr = (v, max) => (v == null ? '' : String(v).trim().slice(0, max))
+const toFlag = (v) => (v ? 1 : 0)
+const toJsonArray = (v) =>
+  JSON.stringify((Array.isArray(v) ? v : []).map((x) => trimStr(x, 200)).filter(Boolean).slice(0, 30))
+
+/** The `landlords` row (and the location picked at sign-up) behind a user. */
+async function landlordForUser(userId) {
+  if (!userId) return null
+  const [rows] = await pool.query(
+    'SELECT id, business_name, address, location_pref, location_lat, location_lng FROM landlords WHERE user_id = ?',
+    [userId]
+  )
+  return rows[0] || null
+}
+
+/**
+ * Resolve which house a landlord-scoped request is about.
+ *
+ * Returns the explicit `?houseId=`, otherwise the house owned by the landlord
+ * behind `?userId=`. A landlord who has not set up a house yet resolves to `0`,
+ * which matches no rows — that is deliberate: their console must show real
+ * zeros rather than somebody else's boarding house (it used to fall back to the
+ * seeded Sunset house, which made every new landlord look like the demo owner).
+ * Returns `null` when neither is supplied so legacy callers keep their old
+ * unscoped behaviour.
+ */
+async function resolveHouseId({ houseId, userId }) {
+  if (houseId) return Number(houseId)
+  if (userId) {
+    const landlord = await landlordForUser(userId)
+    if (!landlord) return 0
+    const [rows] = await pool.query(
+      'SELECT id FROM boarding_houses WHERE landlord_id = ? ORDER BY id LIMIT 1',
+      [landlord.id]
+    )
+    return rows.length > 0 ? Number(rows[0].id) : 0
+  }
+  return null
+}
+
+/** Load a landlord's house (one per landlord) in the owner-facing shape. */
+async function loadOwnerHouse(landlord) {
+  const [houses] = await pool.query(
+    'SELECT * FROM boarding_houses WHERE landlord_id = ? ORDER BY id LIMIT 1',
+    [landlord.id]
+  )
+  if (houses.length === 0) return null
+  const h = houses[0]
+  const [images] = await pool.query(
+    'SELECT id, image_url FROM house_images WHERE house_id = ? ORDER BY sort_order, id',
+    [h.id]
+  )
+  const lat = h.lat != null ? Number(h.lat) : (landlord.location_lat != null ? Number(landlord.location_lat) : null)
+  const lng = h.lng != null ? Number(h.lng) : (landlord.location_lng != null ? Number(landlord.location_lng) : null)
+  return {
+    id: String(h.id),
+    landlordId: String(h.landlord_id),
+    name: h.name || '',
+    tagline: h.tagline || '',
+    municipality: h.municipality || '',
+    barangay: h.barangay || '',
+    address: h.address || '',
+    description: h.description || '',
+    lat,
+    lng,
+    monthlyRent: Number(h.monthly_rent) || 0,
+    curfew: h.curfew || '',
+    visitorPolicy: h.visitor_policy || '',
+    rules: parseStringArray(h.rules),
+    schoolNearby: parseStringArray(h.school_nearby),
+    distanceFromSchool: h.distance_from_school || '',
+    wifi: !!h.wifi,
+    aircon: !!h.aircon,
+    kitchen: !!h.kitchen,
+    laundry: !!h.laundry,
+    parking: !!h.parking,
+    petFriendly: !!h.pet_friendly,
+    verified: !!h.verified,
+    topRated: !!h.top_rated,
+    rating: Number(h.rating) || 0,
+    reviewsCount: Number(h.reviews_count) || 0,
+    totalRooms: Number(h.total_rooms) || 0,
+    occupiedRooms: Number(h.occupied_rooms) || 0,
+    images: images.map((i) => ({ id: String(i.id), url: i.image_url })),
+    createdAt: h.created_at ? new Date(h.created_at).toISOString().slice(0, 10) : '',
+  }
+}
+
+const isHouseImageDataUrl = (url) =>
+  typeof url === 'string' && /^data:image\/(jpeg|jpg|png|webp)/i.test(url.trim())
+
+/** Load the landlord + their house, or answer 4xx and return null. */
+async function ownerContextOrRespond(req, res, { needHouse }) {
+  const userId = req.body?.userId || req.query?.userId
+  if (!userId) {
+    res.status(400).json({ error: 'userId is required' })
+    return null
+  }
+  const landlord = await landlordForUser(userId)
+  if (!landlord) {
+    res.status(404).json({ error: 'This account has no landlord profile. Complete landlord sign-up first.' })
+    return null
+  }
+  if (!needHouse) return { landlord, houseId: null }
+  const [houses] = await pool.query(
+    'SELECT id FROM boarding_houses WHERE landlord_id = ? ORDER BY id LIMIT 1',
+    [landlord.id]
+  )
+  if (houses.length === 0) {
+    res.status(404).json({ error: 'Set up your boarding house first, then you can add photos.' })
+    return null
+  }
+  return { landlord, houseId: Number(houses[0].id) }
+}
+
+// The signed-in landlord's house (plus the location chosen at sign-up).
+app.get('/api/landlord/house', async (req, res) => {
+  try {
+    const landlord = await landlordForUser(req.query.userId)
+    if (!landlord) return res.json({ house: null, landlord: null, suggested: null })
+    const house = await loadOwnerHouse(landlord)
+    res.json({
+      house,
+      landlord: {
+        id: String(landlord.id),
+        businessName: landlord.business_name || '',
+        locationPref: landlord.location_pref || '',
+        locationLat: landlord.location_lat != null ? Number(landlord.location_lat) : null,
+        locationLng: landlord.location_lng != null ? Number(landlord.location_lng) : null,
+      },
+      // Prefill for the create form — reuses the map location from sign-up.
+      suggested: {
+        address: landlord.location_pref || '',
+        municipality: (landlord.address || '').split(',')[0]?.trim() || '',
+        lat: landlord.location_lat != null ? Number(landlord.location_lat) : null,
+        lng: landlord.location_lng != null ? Number(landlord.location_lng) : null,
+      },
+    })
+  } catch (err) {
+    console.error('Get landlord house error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// Create or update the listing. Everything the Explore page shows lives here.
+app.put('/api/landlord/house', async (req, res) => {
+  try {
+    const landlord = await landlordForUser(req.body.userId)
+    if (!landlord) {
+      return res.status(404).json({ error: 'This account has no landlord profile. Complete landlord sign-up first.' })
+    }
+
+    const name = trimStr(req.body.name, 255)
+    const municipality = trimStr(req.body.municipality, 100)
+    const barangay = trimStr(req.body.barangay, 100)
+    const address = trimStr(req.body.address, 500)
+    if (!name) return res.status(400).json({ error: 'Boarding house name is required' })
+    if (!municipality) return res.status(400).json({ error: 'Municipality is required' })
+    if (!barangay) return res.status(400).json({ error: 'Barangay is required' })
+    if (!address) return res.status(400).json({ error: 'Street address is required' })
+
+    const lat = req.body.lat === null || req.body.lat === '' || req.body.lat === undefined ? null : Number(req.body.lat)
+    const lng = req.body.lng === null || req.body.lng === '' || req.body.lng === undefined ? null : Number(req.body.lng)
+
+    const values = [
+      name,
+      trimStr(req.body.tagline, 500),
+      municipality,
+      barangay,
+      address,
+      trimStr(req.body.description, 4000),
+      Number.isFinite(lat) ? lat : null,
+      Number.isFinite(lng) ? lng : null,
+      Math.max(0, Math.round(Number(req.body.monthlyRent) || 0)),
+      trimStr(req.body.curfew, 20),
+      trimStr(req.body.visitorPolicy, 2000),
+      toJsonArray(req.body.rules),
+      toJsonArray(req.body.schoolNearby),
+      trimStr(req.body.distanceFromSchool, 100),
+      toFlag(req.body.wifi),
+      toFlag(req.body.aircon),
+      toFlag(req.body.kitchen),
+      toFlag(req.body.laundry),
+      toFlag(req.body.parking),
+      toFlag(req.body.petFriendly),
+    ]
+
+    const [existing] = await pool.query(
+      'SELECT id FROM boarding_houses WHERE landlord_id = ? ORDER BY id LIMIT 1',
+      [landlord.id]
+    )
+
+    if (existing.length === 0) {
+      await pool.query(
+        `INSERT INTO boarding_houses
+          (landlord_id, name, tagline, municipality, barangay, address, description,
+           lat, lng, monthly_rent, curfew, visitor_policy, rules, school_nearby,
+           distance_from_school, wifi, aircon, kitchen, laundry, parking, pet_friendly)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [landlord.id, ...values]
+      )
+      // Keep the landlord's business name in sync so admin lists show it too.
+      await pool.query('UPDATE landlords SET business_name = ? WHERE id = ? AND (business_name IS NULL OR business_name = \'\')', [name, landlord.id])
+    } else {
+      await pool.query(
+        `UPDATE boarding_houses SET
+           name = ?, tagline = ?, municipality = ?, barangay = ?, address = ?, description = ?,
+           lat = ?, lng = ?, monthly_rent = ?, curfew = ?, visitor_policy = ?, rules = ?,
+           school_nearby = ?, distance_from_school = ?, wifi = ?, aircon = ?, kitchen = ?,
+           laundry = ?, parking = ?, pet_friendly = ?
+         WHERE id = ?`,
+        [...values, existing[0].id]
+      )
+    }
+
+    res.json({ house: await loadOwnerHouse(landlord) })
+  } catch (err) {
+    console.error('Save landlord house error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// Add photos to the gallery.
+app.post('/api/landlord/house/images', async (req, res) => {
+  try {
+    const ctx = await ownerContextOrRespond(req, res, { needHouse: true })
+    if (!ctx) return
+
+    const incoming = (Array.isArray(req.body.images) ? req.body.images : [req.body.images]).filter(isHouseImageDataUrl)
+    if (incoming.length === 0) {
+      return res.status(400).json({ error: 'Upload JPG, JPEG, PNG, or WebP images.' })
+    }
+    if (incoming.some((url) => url.length > 8 * 1024 * 1024)) {
+      return res.status(400).json({ error: 'Each photo must be 4 MB or smaller.' })
+    }
+
+    const [maxRow] = await pool.query(
+      'SELECT COALESCE(MAX(sort_order), -1) AS highest FROM house_images WHERE house_id = ?',
+      [ctx.houseId]
+    )
+    let order = Number(maxRow[0].highest) + 1
+    for (const url of incoming) {
+      await pool.query(
+        'INSERT INTO house_images (house_id, image_url, sort_order) VALUES (?, ?, ?)',
+        [ctx.houseId, url.trim(), order++]
+      )
+    }
+
+    res.json({ house: await loadOwnerHouse(ctx.landlord) })
+  } catch (err) {
+    console.error('Add house images error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// Reorder the gallery — the first photo is the listing cover.
+app.put('/api/landlord/house/images', async (req, res) => {
+  try {
+    const ctx = await ownerContextOrRespond(req, res, { needHouse: true })
+    if (!ctx) return
+
+    const ids = (Array.isArray(req.body.ids) ? req.body.ids : []).map(String)
+    if (ids.length === 0) return res.status(400).json({ error: 'ids is required' })
+
+    const [owned] = await pool.query('SELECT id FROM house_images WHERE house_id = ?', [ctx.houseId])
+    const ownedIds = new Set(owned.map((row) => String(row.id)))
+    if (ids.some((id) => !ownedIds.has(id))) {
+      return res.status(403).json({ error: 'One of those photos does not belong to your boarding house.' })
+    }
+
+    for (const [index, id] of ids.entries()) {
+      await pool.query('UPDATE house_images SET sort_order = ? WHERE id = ? AND house_id = ?', [index, id, ctx.houseId])
+    }
+
+    res.json({ house: await loadOwnerHouse(ctx.landlord) })
+  } catch (err) {
+    console.error('Reorder house images error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// Remove a photo.
+app.delete('/api/landlord/house/images/:id', async (req, res) => {
+  try {
+    const ctx = await ownerContextOrRespond(req, res, { needHouse: true })
+    if (!ctx) return
+
+    const [result] = await pool.query(
+      'DELETE FROM house_images WHERE id = ? AND house_id = ?',
+      [req.params.id, ctx.houseId]
+    )
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'That photo is not part of your boarding house.' })
+    }
+
+    res.json({ house: await loadOwnerHouse(ctx.landlord) })
+  } catch (err) {
+    console.error('Delete house image error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+/* ================================================================
    ROOMS
    ================================================================ */
 app.get('/api/rooms', async (req, res) => {
   try {
-    const { houseId } = req.query
+    const hid = await resolveHouseId(req.query)
     let sql = `
       SELECT r.*,
         (SELECT GROUP_CONCAT(u.name SEPARATOR ',') FROM boarder_rentals br
@@ -638,7 +1048,7 @@ app.get('/api/rooms', async (req, res) => {
       FROM rooms r
     `
     const params = []
-    if (houseId) { sql += ' WHERE r.house_id = ?'; params.push(houseId) }
+    if (hid !== null) { sql += ' WHERE r.house_id = ?'; params.push(hid) }
     sql += ' ORDER BY r.room_no'
     const [rows] = await pool.query(sql, params)
     res.json(rows.map(r => ({
@@ -662,7 +1072,14 @@ app.get('/api/rooms', async (req, res) => {
 
 app.post('/api/rooms', async (req, res) => {
   try {
-    const { houseId, roomNo, type, capacity, monthlyRent, gender, aircon } = req.body
+    const { roomNo, type, capacity, monthlyRent, gender, aircon } = req.body
+    // The Rooms page never sent a house id, so this used to insert NULL into a
+    // NOT NULL column and fail with a 500. Resolve it from the body, or from
+    // the signed-in landlord's own boarding house.
+    const houseId = await resolveHouseId({ houseId: req.body.houseId, userId: req.body.userId })
+    if (!houseId) {
+      return res.status(400).json({ error: 'Set up your boarding house before adding rooms.' })
+    }
     const [result] = await pool.query(
       'INSERT INTO rooms (house_id, room_no, type, capacity, monthly_rent, gender, aircon) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [houseId, roomNo, type, capacity || 1, monthlyRent, gender || 'mixed', aircon || false]
@@ -724,7 +1141,8 @@ app.delete('/api/rooms/:id', async (req, res) => {
    ================================================================ */
 app.get('/api/boarders', async (req, res) => {
   try {
-    const { q, gender, roomId, houseId } = req.query
+    const { q, gender, roomId } = req.query
+    const hid = await resolveHouseId(req.query)
     let sql = `
       SELECT u.id, u.name, u.avatar_color, u.avatar_url, u.phone, bp.age, bp.gender AS gender_val,
         bp.school, bp.course, bp.guardian_name, bp.address,
@@ -741,7 +1159,7 @@ app.get('/api/boarders', async (req, res) => {
     if (q) { sql += ' AND (u.name LIKE ? OR bp.school LIKE ?)'; params.push(`%${q}%`, `%${q}%`) }
     if (gender) { sql += ' AND bp.gender = ?'; params.push(gender) }
     if (roomId) { sql += ' AND br.room_id = ?'; params.push(roomId) }
-    if (houseId) { sql += ' AND br.house_id = ?'; params.push(houseId) }
+    if (hid !== null) { sql += ' AND br.house_id = ?'; params.push(hid) }
     sql += ' ORDER BY u.name'
     const [rows] = await pool.query(sql, params)
     res.json(rows.map(r => ({
@@ -778,8 +1196,9 @@ app.get('/api/boarders', async (req, res) => {
 app.get('/api/payments', async (req, res) => {
   try {
     const { status, month, q } = req.query
+    const hid = await resolveHouseId(req.query)
     let sql = `
-      SELECT p.*, u.name AS boarder_name, r.room_no
+      SELECT p.*, br.house_id, u.name AS boarder_name, r.room_no
       FROM payments p
       JOIN boarder_rentals br ON br.id = p.rental_id
       JOIN users u ON u.id = br.boarder_id
@@ -787,6 +1206,7 @@ app.get('/api/payments', async (req, res) => {
       WHERE 1=1
     `
     const params = []
+    if (hid !== null) { sql += ' AND br.house_id = ?'; params.push(hid) }
     if (status) { sql += ' AND p.status = ?'; params.push(status) }
     if (month) { sql += ' AND p.month_key = ?'; params.push(month) }
     if (q) {
@@ -799,7 +1219,7 @@ app.get('/api/payments', async (req, res) => {
       id: String(r.id),
       boarderId: String(r.rental_id),
       roomId: r.room_no ? String(r.room_id) : '',
-      houseId: '',
+      houseId: r.house_id ? String(r.house_id) : '',
       boarderName: r.boarder_name || '—',
       roomNo: r.room_no || '—',
       month: r.month_key,
@@ -819,7 +1239,14 @@ app.get('/api/payments', async (req, res) => {
 
 app.get('/api/payments/months', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT DISTINCT month_key FROM payments ORDER BY month_key DESC')
+    const hid = await resolveHouseId(req.query)
+    let sql = `SELECT DISTINCT p.month_key FROM payments p
+      JOIN boarder_rentals br ON br.id = p.rental_id
+      WHERE 1=1`
+    const params = []
+    if (hid !== null) { sql += ' AND br.house_id = ?'; params.push(hid) }
+    sql += ' ORDER BY p.month_key DESC'
+    const [rows] = await pool.query(sql, params)
     res.json(rows.map(r => r.month_key))
   } catch (err) {
     console.error('Get payment months error:', err)
@@ -948,8 +1375,11 @@ app.put('/api/notifications/read', async (req, res) => {
    ================================================================ */
 app.get('/api/dashboard/overview', async (req, res) => {
   try {
-    const { houseId } = req.query
-    const hid = houseId || 1
+    // Scope to the requesting landlord's own house. A landlord who has not set
+    // one up yet resolves to 0 and honestly sees zeros — the old `|| 1` fallback
+    // made every new landlord look at the seeded Sunset house's numbers.
+    const resolved = await resolveHouseId(req.query)
+    const hid = resolved === null ? 1 : resolved
 
     // Room stats
     const [roomStats] = await pool.query(
@@ -963,17 +1393,22 @@ app.get('/api/dashboard/overview', async (req, res) => {
     // Payment stats for current month
     const now = new Date()
     const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    // Payments are attributed to a house through the boarder's rental, so this
+    // has to join rather than filter `payments` directly. Every column is
+    // qualified because both tables carry a `status` column.
     const [payStats] = await pool.query(`
       SELECT
-        SUM(CASE WHEN status IN ('paid','late') THEN amount ELSE 0 END) AS collected,
-        SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS pending_amount,
-        SUM(CASE WHEN status = 'overdue' THEN amount ELSE 0 END) AS overdue_amount,
-        SUM(CASE WHEN status IN ('pending','overdue') THEN 1 ELSE 0 END) AS overdue_count,
+        SUM(CASE WHEN p.status IN ('paid','late') THEN p.amount ELSE 0 END) AS collected,
+        SUM(CASE WHEN p.status = 'pending' THEN p.amount ELSE 0 END) AS pending_amount,
+        SUM(CASE WHEN p.status = 'overdue' THEN p.amount ELSE 0 END) AS overdue_amount,
+        SUM(CASE WHEN p.status IN ('pending','overdue') THEN 1 ELSE 0 END) AS overdue_count,
         COUNT(*) AS total_payments,
-        SUM(CASE WHEN status IN ('paid','late') THEN 1 ELSE 0 END) AS paid_count,
-        SUM(amount) AS expected
-      FROM payments WHERE month_key = ?
-    `, [monthKey])
+        SUM(CASE WHEN p.status IN ('paid','late') THEN 1 ELSE 0 END) AS paid_count,
+        SUM(p.amount) AS expected
+      FROM payments p
+      JOIN boarder_rentals br ON br.id = p.rental_id
+      WHERE p.month_key = ? AND br.house_id = ?
+    `, [monthKey, hid])
     const ps = payStats[0]
 
     // Boarder counts
@@ -991,11 +1426,14 @@ app.get('/api/dashboard/overview', async (req, res) => {
 
     // Revenue trend (last 8 months)
     const [revenueTrend] = await pool.query(`
-      SELECT month_key AS name,
-        SUM(CASE WHEN status IN ('paid','late') THEN amount ELSE 0 END) AS income,
-        SUM(amount) AS expected
-      FROM payments GROUP BY month_key ORDER BY month_key
-    `)
+      SELECT p.month_key AS name,
+        SUM(CASE WHEN p.status IN ('paid','late') THEN p.amount ELSE 0 END) AS income,
+        SUM(p.amount) AS expected
+      FROM payments p
+      JOIN boarder_rentals br ON br.id = p.rental_id
+      WHERE br.house_id = ?
+      GROUP BY p.month_key ORDER BY p.month_key
+    `, [hid])
 
     // Occupancy trend
     const occupancyTrend = revenueTrend.map((r, i) => ({
@@ -1043,18 +1481,18 @@ app.get('/api/subscription', async (req, res) => {
         const plan = rows[0].subscription || 'none'
         const planDetails = {
           none: { plan: 'None', price: 0, cycle: 'month', status: 'active', renewsOn: '', boarderLimit: 0, features: [] },
-          starter: { plan: 'Starter', price: 100, cycle: 'month', status: 'active', renewsOn: '2026-08-28', boarderLimit: 5, features: ['Basic dashboard', 'Room management', 'Payment tracking', 'PDF reports'] },
-          standard: { plan: 'Standard', price: 200, cycle: 'month', status: 'active', renewsOn: '2026-08-28', boarderLimit: 15, features: ['Everything in Starter', 'Analytics & charts', 'AI Assistant', 'Smart notifications', 'Reviews management', 'Excel export'] },
-          premium: { plan: 'Premium', price: 500, cycle: 'year', status: 'active', renewsOn: '', boarderLimit: null, features: ['Everything unlocked', 'Unlimited boarders', 'Advanced analytics', 'Priority support', 'Unlimited storage'] },
+          basic: { plan: 'Basic', price: 199, cycle: 'month', status: 'active', renewsOn: '', boarderLimit: 5, features: ['Manage up to 5 boards', 'AI Assistant', 'Real-time notifications', 'Basic dashboard', 'Analytics', 'Data backup', 'Basic reports'] },
+          standard: { plan: 'Standard', price: 499, cycle: 'month', status: 'active', renewsOn: '', boarderLimit: 15, features: ['Manage up to 15 boards', 'AI Assistant', 'Real-time notifications', 'Enhanced dashboard', 'Analytics', 'Data backup', 'Detailed reports'] },
+          premium: { plan: 'Premium', price: 899, cycle: 'month', status: 'active', renewsOn: '', boarderLimit: 30, features: ['Manage up to 30 boards', 'AI Assistant', 'Real-time notifications', 'Advanced dashboard', 'Advanced analytics', 'Data backup', 'Advanced reports', 'Priority support', 'Enhanced management controls'] },
         }
         return res.json(planDetails[plan] || planDetails.none)
       }
     }
-    // Default
+    // Default — no userId, return no plan
     res.json({
-      plan: 'Standard', price: 200, cycle: 'month', status: 'active',
-      renewsOn: '2026-08-28', boarderLimit: 15,
-      features: ['Everything in Starter', 'Analytics & charts', 'AI Assistant', 'Smart notifications', 'Reviews management', 'Excel export'],
+      plan: 'None', price: 0, cycle: 'month', status: 'active',
+      renewsOn: '', boarderLimit: 0,
+      features: [],
     })
   } catch (err) {
     console.error('Get subscription error:', err)
@@ -1282,7 +1720,7 @@ app.get('/api/favorites', async (req, res) => {
     if (!userId) return res.status(400).json({ error: 'userId is required' })
     const [rows] = await pool.query(`
       SELECT bh.*, l.business_name AS owner_name, l.user_id AS owner_user_id, f.created_at AS favorited_at,
-        (SELECT COUNT(*) FROM rooms r WHERE r.house_id = bh.id) AS total_rooms_calc,
+        (SELECT COALESCE(SUM(r.capacity), 0) FROM rooms r WHERE r.house_id = bh.id) AS total_rooms_calc,
         (SELECT COALESCE(SUM(r.occupied), 0) FROM rooms r WHERE r.house_id = bh.id) AS occupied_rooms_calc
       FROM favorites f
       JOIN boarding_houses bh ON bh.id = f.house_id
@@ -1824,15 +2262,6 @@ app.put('/api/boarder/profile', async (req, res) => {
 })
 
 /* ================================================================
-   API 404 — always answer JSON (never Express' HTML error page)
-   ================================================================ */
-app.use('/api', (req, res) => {
-  res.status(404).json({
-    error: `API endpoint ${req.method} ${req.originalUrl} is not available on the running server. If the server was just changed, restart it (npm run dev).`,
-  })
-})
-
-/* ================================================================
    STARTUP — guarded schema guarantees
    ================================================================ */
 
@@ -1891,7 +2320,567 @@ async function ensureSchema() {
   } catch (err) {
     console.warn('landlord_documents schema check skipped:', err.message)
   }
+
+  try {
+    /* Landlord sign-up saves the owner's chosen map location onto the
+       `landlords` row, so these three columns have to exist. The CREATE TABLE in
+       database/boardease.sql includes them for a fresh install, but the
+       multi-statement ALTER (which is what adds them to an existing database)
+       aborts on the first duplicate column — easy to end up without them. */
+    const [locCols] = await pool.query(
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'landlords'
+          AND COLUMN_NAME IN ('location_pref', 'location_lat', 'location_lng')`
+    )
+    const haveLoc = new Set(locCols.map((c) => c.COLUMN_NAME))
+    if (!haveLoc.has('location_pref')) {
+      await pool.query('ALTER TABLE landlords ADD COLUMN location_pref varchar(255) DEFAULT NULL')
+      console.log('✅ Added landlords.location_pref — landlord sign-up can save a location')
+    }
+    if (!haveLoc.has('location_lat')) {
+      await pool.query('ALTER TABLE landlords ADD COLUMN location_lat decimal(10,7) DEFAULT NULL')
+      console.log('✅ Added landlords.location_lat')
+    }
+    if (!haveLoc.has('location_lng')) {
+      await pool.query('ALTER TABLE landlords ADD COLUMN location_lng decimal(10,7) DEFAULT NULL')
+      console.log('✅ Added landlords.location_lng')
+    }
+  } catch (err) {
+    console.warn('landlords location schema check skipped:', err.message)
+  }
+
+  try {
+    /* Landlord-uploaded house photos are stored as data URLs (there is no file
+       storage in this project yet), which do not fit the original
+       varchar(500). Widen it once so "My Boarding House" can save a gallery. */
+    const [imgCol] = await pool.query(
+      `SELECT DATA_TYPE FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'house_images' AND COLUMN_NAME = 'image_url'`
+    )
+    if (imgCol.length > 0 && String(imgCol[0].DATA_TYPE).toLowerCase() !== 'mediumtext') {
+      await pool.query('ALTER TABLE house_images MODIFY image_url MEDIUMTEXT NOT NULL')
+      console.log('✅ Widened house_images.image_url — house photo uploads enabled')
+    }
+  } catch (err) {
+    console.warn('house_images schema check skipped:', err.message)
+  }
+
+  try {
+    /* `landlords.subscription` shipped as enum('none','starter',...) in an older
+       dump, while every part of the app writes 'basic' — so choosing the Basic
+       plan either errored or stored an invalid value. Widen it to the set the
+       code actually uses, but only when it needs widening. */
+    const [subCol] = await pool.query(
+      `SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'landlords' AND COLUMN_NAME = 'subscription'`
+    )
+    if (subCol.length > 0 && !String(subCol[0].COLUMN_TYPE).includes("'basic'")) {
+      await pool.query(
+        "ALTER TABLE landlords MODIFY subscription enum('none','basic','standard','premium') NULL DEFAULT 'none'"
+      )
+      console.log('✅ Fixed landlords.subscription enum — the Basic plan can now be saved')
+    }
+  } catch (err) {
+    console.warn('subscription enum check skipped:', err.message)
+  }
+
+  try {
+    /* Subscription receipts used to live in an in-memory array, so a
+       `node --watch` restart threw away every receipt a landlord had submitted
+       before the admin ever saw it. They belong in the database. */
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS subscription_receipts (
+        id int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        landlord_id int(11) NOT NULL,
+        requested_plan varchar(20) NOT NULL,
+        plan_price int(11) NOT NULL DEFAULT 0,
+        receipt_url MEDIUMTEXT NOT NULL,
+        status enum('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+        notes text DEFAULT NULL,
+        submitted_at timestamp NOT NULL DEFAULT current_timestamp(),
+        reviewed_at timestamp NULL DEFAULT NULL,
+        KEY landlord_id (landlord_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `)
+  } catch (err) {
+    console.warn('subscription_receipts schema check skipped:', err.message)
+  }
+
+  try {
+    /* Landlord ↔ admin messages about a plan ("contact admin"). */
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS admin_messages (
+        id int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        user_id int(11) NOT NULL,
+        landlord_id int(11) DEFAULT NULL,
+        plan varchar(20) DEFAULT NULL,
+        body text NOT NULL,
+        reply text DEFAULT NULL,
+        replied_at timestamp NULL DEFAULT NULL,
+        created_at timestamp NOT NULL DEFAULT current_timestamp(),
+        KEY user_id (user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `)
+  } catch (err) {
+    console.warn('admin_messages schema check skipped:', err.message)
+  }
 }
+
+/* ================================================================
+   ADMIN ENDPOINTS
+   ================================================================ */
+
+/* Monthly prices, keyed by the plan name the UI sends. The key doubles as the
+   `landlords.subscription` enum value, so it is the single source of truth for
+   which plans are valid. */
+const PLAN_PRICES = { basic: 199, standard: 499, premium: 899 }
+
+/** Shape a `subscription_receipts` row for the admin console and the
+ *  landlord's own history page. */
+function receiptRow(r) {
+  return {
+    id: String(r.id),
+    landlordId: String(r.landlord_id),
+    landlordName: r.landlord_name || 'Unknown Landlord',
+    landlordEmail: r.landlord_email || '',
+    requestedPlan: r.requested_plan,
+    planPrice: Number(r.plan_price) || 0,
+    receiptUrl: r.receipt_url,
+    status: r.status,
+    notes: r.notes || null,
+    submittedAt: r.submitted_at ? new Date(r.submitted_at).toISOString() : null,
+    reviewedAt: r.reviewed_at ? new Date(r.reviewed_at).toISOString() : null,
+  }
+}
+
+/** Receipt queries join the landlord and user so both consoles can show a name. */
+const RECEIPT_SELECT = `
+  SELECT r.*, u.name AS landlord_name, u.email AS landlord_email
+  FROM subscription_receipts r
+  LEFT JOIN landlords l ON l.id = r.landlord_id
+  LEFT JOIN users u ON u.id = l.user_id
+`
+
+// Admin stats
+app.get('/api/admin/stats', async (req, res) => {
+  try {
+    const [landlords] = await pool.query('SELECT COUNT(*) AS cnt FROM landlords')
+    const [planCounts] = await pool.query(
+      `SELECT subscription, COUNT(*) AS cnt FROM landlords GROUP BY subscription`
+    )
+    const planBreakdown = { basic: 0, standard: 0, premium: 0, none: 0 }
+    for (const row of planCounts) {
+      const key = row.subscription || 'none'
+      if (key in planBreakdown) planBreakdown[key] = Number(row.cnt)
+    }
+
+    const now = new Date()
+    const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const [pendingRows] = await pool.query(
+      "SELECT COUNT(*) AS cnt FROM subscription_receipts WHERE status = 'pending'"
+    )
+    const [approvedRows] = await pool.query(
+      `SELECT COUNT(*) AS cnt FROM subscription_receipts
+        WHERE status = 'approved' AND reviewed_at IS NOT NULL
+          AND DATE_FORMAT(reviewed_at, '%Y-%m') = ?`,
+      [thisMonth]
+    )
+    const [openMessages] = await pool.query(
+      'SELECT COUNT(*) AS cnt FROM admin_messages WHERE reply IS NULL'
+    )
+    const pending = Number(pendingRows[0]?.cnt || 0)
+    const approvedThisMonth = Number(approvedRows[0]?.cnt || 0)
+    // Revenue: sum of active plan prices
+    const totalRevenue = Object.entries(planBreakdown).reduce((sum, [plan, count]) => {
+      return sum + (PLAN_PRICES[plan] || 0) * count
+    }, 0)
+    res.json({
+      totalLandlords: Number(landlords[0]?.cnt || 0),
+      pendingReceipts: pending,
+      approvedThisMonth,
+      pendingMessages: Number(openMessages[0]?.cnt || 0),
+      totalRevenue,
+      planBreakdown,
+    })
+  } catch (err) {
+    console.error('Admin stats error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// List all landlords
+app.get('/api/admin/landlords', async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT u.id, u.name, u.email, u.phone, u.avatar_color, u.avatar_url, u.created_at,
+        l.id AS landlord_id, l.business_name, l.verified, l.subscription,
+        l.location_pref
+      FROM users u
+      JOIN landlords l ON l.user_id = u.id
+      WHERE u.role = 'landlord'
+      ORDER BY u.created_at DESC
+    `)
+    res.json(rows.map(r => ({
+      id: String(r.id),
+      name: r.name,
+      email: r.email,
+      phone: r.phone || '',
+      avatarColor: r.avatar_color || '#1E73E8',
+      landlordId: r.landlord_id ? String(r.landlord_id) : '',
+      businessName: r.business_name || '',
+      verified: !!r.verified,
+      subscription: r.subscription || 'none',
+      locationPref: r.location_pref || '',
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : '',
+    })))
+  } catch (err) {
+    console.error('Admin list landlords error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// List subscription receipts (admin)
+app.get('/api/admin/receipts', async (req, res) => {
+  try {
+    const { status } = req.query
+    let sql = `${RECEIPT_SELECT} WHERE 1=1`
+    const params = []
+    if (status && status !== 'all') { sql += ' AND r.status = ?'; params.push(status) }
+    sql += ' ORDER BY r.submitted_at DESC'
+    const [rows] = await pool.query(sql, params)
+    res.json(rows.map(receiptRow))
+  } catch (err) {
+    console.error('Admin list receipts error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// Landlord submits a payment receipt — this is what the admin actually reviews.
+app.post('/api/subscription/receipts', async (req, res) => {
+  try {
+    const { userId, plan, receiptUrl } = req.body
+    if (!userId) return res.status(400).json({ error: 'userId is required' })
+
+    const landlord = await landlordForUser(userId)
+    if (!landlord) {
+      return res.status(404).json({ error: 'This account has no landlord profile. Complete landlord sign-up first.' })
+    }
+
+    // The plan key doubles as the enum value, so this also validates the name.
+    const planKey = String(plan || '').toLowerCase()
+    const price = PLAN_PRICES[planKey]
+    if (!price) {
+      return res.status(400).json({ error: 'Choose a valid plan: Basic, Standard, or Premium.' })
+    }
+    if (!isHouseImageDataUrl(receiptUrl)) {
+      return res.status(400).json({ error: 'Upload a JPG, PNG, or WebP screenshot of your receipt.' })
+    }
+    if (String(receiptUrl).length > 8 * 1024 * 1024) {
+      return res.status(400).json({ error: 'That receipt image is too large. Please upload one under 4 MB.' })
+    }
+
+    const [result] = await pool.query(
+      'INSERT INTO subscription_receipts (landlord_id, requested_plan, plan_price, receipt_url) VALUES (?, ?, ?, ?)',
+      [landlord.id, planKey, price, String(receiptUrl).trim()]
+    )
+
+    const [rows] = await pool.query(`${RECEIPT_SELECT} WHERE r.id = ?`, [result.insertId])
+    res.json({ receipt: receiptRow(rows[0]) })
+  } catch (err) {
+    console.error('Submit subscription receipt error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// The landlord's own receipt history.
+app.get('/api/subscription/receipts', async (req, res) => {
+  try {
+    const { userId } = req.query
+    if (!userId) return res.status(400).json({ error: 'userId is required' })
+    const landlord = await landlordForUser(userId)
+    if (!landlord) return res.json([])
+    const [rows] = await pool.query(
+      `${RECEIPT_SELECT} WHERE r.landlord_id = ? ORDER BY r.submitted_at DESC`,
+      [landlord.id]
+    )
+    res.json(rows.map(receiptRow))
+  } catch (err) {
+    console.error('List own receipts error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+/* ================================================================
+   SUPPORT — landlord ↔ admin messages ("contact admin")
+   ================================================================ */
+
+function supportRow(m) {
+  return {
+    id: String(m.id),
+    userId: String(m.user_id),
+    landlordId: m.landlord_id ? String(m.landlord_id) : '',
+    landlordName: m.landlord_name || '',
+    landlordEmail: m.landlord_email || '',
+    plan: m.plan || '',
+    body: m.body,
+    reply: m.reply || null,
+    repliedAt: m.replied_at ? new Date(m.replied_at).toISOString() : null,
+    createdAt: m.created_at ? new Date(m.created_at).toISOString() : null,
+  }
+}
+
+const SUPPORT_SELECT = `
+  SELECT m.*, u.name AS landlord_name, u.email AS landlord_email
+  FROM admin_messages m
+  LEFT JOIN users u ON u.id = m.user_id
+`
+
+// A landlord asks the admin about a plan.
+app.post('/api/support/messages', async (req, res) => {
+  try {
+    const { userId, plan, body } = req.body
+    if (!userId) return res.status(400).json({ error: 'userId is required' })
+    const message = trimStr(body, 2000)
+    if (!message) return res.status(400).json({ error: 'Please write a message.' })
+
+    const landlord = await landlordForUser(userId)
+    const [result] = await pool.query(
+      'INSERT INTO admin_messages (user_id, landlord_id, plan, body) VALUES (?, ?, ?, ?)',
+      [userId, landlord ? landlord.id : null, trimStr(plan, 20) || null, message]
+    )
+    const [rows] = await pool.query(`${SUPPORT_SELECT} WHERE m.id = ?`, [result.insertId])
+    res.json({ message: supportRow(rows[0]) })
+  } catch (err) {
+    console.error('Send support message error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// A landlord's own conversation with the admin.
+app.get('/api/support/messages', async (req, res) => {
+  try {
+    const { userId } = req.query
+    if (!userId) return res.status(400).json({ error: 'userId is required' })
+    const [rows] = await pool.query(
+      `${SUPPORT_SELECT} WHERE m.user_id = ? ORDER BY m.created_at DESC`,
+      [userId]
+    )
+    res.json(rows.map(supportRow))
+  } catch (err) {
+    console.error('List support messages error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// Admin inbox — newest first, unreplied first.
+app.get('/api/admin/messages', async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `${SUPPORT_SELECT} ORDER BY (m.reply IS NULL) DESC, m.created_at DESC`
+    )
+    res.json(rows.map(supportRow))
+  } catch (err) {
+    console.error('Admin list messages error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// Admin replies, and the landlord gets a notification linking back to history.
+app.put('/api/admin/messages/:id', async (req, res) => {
+  try {
+    const reply = trimStr(req.body.reply, 2000)
+    if (!reply) return res.status(400).json({ error: 'Please write a reply.' })
+
+    const [found] = await pool.query('SELECT * FROM admin_messages WHERE id = ?', [req.params.id])
+    if (found.length === 0) return res.status(404).json({ error: 'Message not found' })
+
+    await pool.query('UPDATE admin_messages SET reply = ?, replied_at = NOW() WHERE id = ?', [reply, found[0].id])
+
+    await insertNotification(
+      found[0].user_id,
+      'subscription',
+      'Admin replied to your message',
+      reply.length > 120 ? `${reply.slice(0, 120)}…` : reply,
+      '/dashboard/subscription/history'
+    )
+
+    const [rows] = await pool.query(`${SUPPORT_SELECT} WHERE m.id = ?`, [found[0].id])
+    res.json({ message: supportRow(rows[0]) })
+  } catch (err) {
+    console.error('Admin reply message error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// Admin approve/reject a receipt. Approving is what activates the plan.
+app.put('/api/admin/receipts/:id', async (req, res) => {
+  try {
+    const { status, notes } = req.body
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'status must be approved or rejected' })
+    }
+
+    const [found] = await pool.query('SELECT * FROM subscription_receipts WHERE id = ?', [req.params.id])
+    if (found.length === 0) return res.status(404).json({ error: 'Receipt not found' })
+    const receipt = found[0]
+
+    await pool.query(
+      'UPDATE subscription_receipts SET status = ?, notes = ?, reviewed_at = NOW() WHERE id = ?',
+      [status, notes ? trimStr(notes, 500) : null, receipt.id]
+    )
+
+    const [landlordRows] = await pool.query('SELECT user_id FROM landlords WHERE id = ?', [receipt.landlord_id])
+    const landlordUserId = landlordRows[0]?.user_id
+    const planName = String(receipt.requested_plan)
+
+    if (status === 'approved') {
+      // The plan key is the enum value, so only accept plans we actually sell.
+      if (PLAN_PRICES[planName.toLowerCase()]) {
+        await pool.query('UPDATE landlords SET subscription = ? WHERE id = ?', [planName.toLowerCase(), receipt.landlord_id])
+      }
+      await insertNotification(
+        landlordUserId,
+        'subscription',
+        'Plan Activated!',
+        `Your ${planName} subscription has been activated. All features are now unlocked.`,
+        '/dashboard/subscription'
+      )
+    } else {
+      await insertNotification(
+        landlordUserId,
+        'subscription',
+        'Receipt Rejected',
+        `Your payment receipt for the ${planName} plan was rejected. ${notes ? 'Reason: ' + notes : 'Please try again.'}`,
+        '/dashboard/subscription'
+      )
+    }
+
+    const [rows] = await pool.query(`${RECEIPT_SELECT} WHERE r.id = ?`, [receipt.id])
+    res.json(receiptRow(rows[0]))
+  } catch (err) {
+    console.error('Review receipt error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+/* ================================================================
+   ADMIN — Profile & Credentials
+   ================================================================ */
+
+// Get admin profile
+app.get('/api/admin/profile', async (req, res) => {
+  try {
+    const { userId } = req.query
+    if (!userId) return res.status(400).json({ error: 'userId is required' })
+    const [rows] = await pool.query(
+      'SELECT id, name, email, phone, avatar_color, avatar_url, role FROM users WHERE id = ? AND role = ?',
+      [userId, 'admin']
+    )
+    if (rows.length === 0) return res.status(404).json({ error: 'Admin not found' })
+    const u = rows[0]
+    res.json({
+      id: String(u.id),
+      name: u.name,
+      email: u.email,
+      phone: u.phone || '',
+      avatarColor: u.avatar_color || '#0B2D63',
+      avatarUrl: u.avatar_url || '',
+      role: u.role,
+    })
+  } catch (err) {
+    console.error('Get admin profile error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// Update admin profile (name, phone)
+app.put('/api/admin/profile', async (req, res) => {
+  try {
+    const { userId, name, phone, avatarUrl } = req.body
+    if (!userId) return res.status(400).json({ error: 'userId is required' })
+    const [urows] = await pool.query('SELECT role FROM users WHERE id = ?', [userId])
+    if (urows.length === 0) return res.status(404).json({ error: 'User not found' })
+    if (urows[0].role !== 'admin') return res.status(403).json({ error: 'Not an admin account' })
+    if (name !== undefined) await pool.query('UPDATE users SET name = ? WHERE id = ?', [name, userId])
+    if (phone !== undefined) await pool.query('UPDATE users SET phone = ? WHERE id = ?', [phone, userId])
+    if (avatarUrl !== undefined) {
+      const value = String(avatarUrl || '')
+      await pool.query('UPDATE users SET avatar_url = ? WHERE id = ?', [value || null, userId])
+    }
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('Update admin profile error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// Change admin email
+app.put('/api/admin/email', async (req, res) => {
+  try {
+    const { userId, newEmail, currentPassword } = req.body
+    if (!userId || !newEmail || !currentPassword) {
+      return res.status(400).json({ error: 'userId, newEmail, and currentPassword are required' })
+    }
+    const cleanEmail = String(newEmail).trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({ error: 'Please enter a valid email address' })
+    }
+    // Verify current password
+    const [urows] = await pool.query('SELECT id, role, password FROM users WHERE id = ?', [userId])
+    if (urows.length === 0) return res.status(404).json({ error: 'User not found' })
+    if (urows[0].role !== 'admin') return res.status(403).json({ error: 'Not an admin account' })
+    if (urows[0].password !== currentPassword) {
+      return res.status(401).json({ error: 'Current password is incorrect' })
+    }
+    // Check email is not taken
+    const [existing] = await pool.query('SELECT id FROM users WHERE email = ? AND id != ?', [cleanEmail, userId])
+    if (existing.length > 0) {
+      return res.status(409).json({ error: 'That email is already in use by another account' })
+    }
+    await pool.query('UPDATE users SET email = ? WHERE id = ?', [cleanEmail, userId])
+    res.json({ ok: true, email: cleanEmail })
+  } catch (err) {
+    console.error('Change admin email error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// Change admin password
+app.put('/api/admin/password', async (req, res) => {
+  try {
+    const { userId, currentPassword, newPassword } = req.body
+    if (!userId || !currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'userId, currentPassword, and newPassword are required' })
+    }
+    if (String(newPassword).length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters' })
+    }
+    const [urows] = await pool.query('SELECT id, role, password FROM users WHERE id = ?', [userId])
+    if (urows.length === 0) return res.status(404).json({ error: 'User not found' })
+    if (urows[0].role !== 'admin') return res.status(403).json({ error: 'Not an admin account' })
+    if (urows[0].password !== currentPassword) {
+      return res.status(401).json({ error: 'Current password is incorrect' })
+    }
+    await pool.query('UPDATE users SET password = ? WHERE id = ?', [newPassword, userId])
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('Change admin password error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+/* ================================================================
+   API 404 — always answer JSON (never Express' HTML error page)
+
+   This MUST be registered after every route: Express matches middleware in
+   order, so when it sat earlier in the file it swallowed every endpoint
+   declared below it (the whole admin, subscription and support API).
+   ================================================================ */
+app.use('/api', (req, res) => {
+  res.status(404).json({
+    error: `API endpoint ${req.method} ${req.originalUrl} is not available on the running server. If the server was just changed, restart it (npm run dev).`,
+  })
+})
 
 /* ================================================================
    START

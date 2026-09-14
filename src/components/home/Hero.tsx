@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Building2, MapPin, Search, Sparkles, Star } from 'lucide-react'
+import { Building2, MapPin, Search, Sparkles } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLanguage } from '../../lib/i18n'

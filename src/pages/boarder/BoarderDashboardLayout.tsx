@@ -18,7 +18,7 @@ import ProfileMenu from '../../components/boarder/ProfileMenu'
 import { Avatar } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
 import { useCompare } from '../../lib/compare'
-import { useConversations, useFavorites, useReservations, useUnviewedFavorites } from '../../lib/hooks'
+import { useConversations, useReservations, useUnviewedFavorites } from '../../lib/hooks'
 import { cn } from '../../lib/utils'
 
 interface NavItem {
@@ -36,7 +36,6 @@ export default function BoarderDashboardLayout() {
   const compare = useCompare()
   const userId = user?.id?.toString()
 
-  const { data: favorites } = useFavorites(userId)
   const { data: conversations } = useConversations(userId)
   const { data: reservations } = useReservations(userId)
   const { data: unviewedFavorites } = useUnviewedFavorites(userId)

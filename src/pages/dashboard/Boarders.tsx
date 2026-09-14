@@ -1,8 +1,9 @@
 import { motion } from 'framer-motion'
-import { Eye, Plus, Search, Trash2, UserRound, Users } from 'lucide-react'
+import { Eye, Lock, Plus, Search, Trash2, UserRound, Users } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { Avatar, EmptyState, Modal, Skeleton, Spinner } from '../../components/ui'
 import { useAddBoarder, useBoarders, useRemoveBoarder, useRooms } from '../../lib/hooks'
+import { usePlanFeatures } from '../../components/dashboard/PlanGate'
 import { cn, peso, prettyDate } from '../../lib/utils'
 import type { Boarder } from '../../server/types'
 
@@ -23,6 +24,9 @@ export default function Boarders() {
   const [viewing, setViewing] = useState<Boarder | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [removeTarget, setRemoveTarget] = useState<Boarder | null>(null)
+  const { features } = usePlanFeatures()
+  const hasBoardersFeature = features.boarders
+
   const [form, setForm] = useState({
     name: '',
     age: 20,
@@ -67,12 +71,21 @@ export default function Boarders() {
             {isLoading ? 'Loading…' : `${countByGender.total} boarders · ${countByGender.female} female · ${countByGender.male} male`}
           </p>
         </div>
-        <button
-          onClick={() => setAddOpen(true)}
-          className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgb(30_115_232/0.35)] transition hover:-translate-y-0.5 hover:bg-brand-600"
-        >
-          <Plus size={16} /> Add boarder
-        </button>
+        {hasBoardersFeature ? (
+          <button
+            onClick={() => setAddOpen(true)}
+            className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgb(30_115_232/0.35)] transition hover:-translate-y-0.5 hover:bg-brand-600"
+          >
+            <Plus size={16} /> Add boarder
+          </button>
+        ) : (
+          <a
+            href="/dashboard/subscription"
+            className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-semibold text-amber-700 transition hover:bg-amber-100"
+          >
+            <Lock size={15} /> Subscribe to add boarders
+          </a>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

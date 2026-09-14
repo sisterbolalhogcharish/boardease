@@ -56,13 +56,101 @@ const LOCATION_DEFAULTS = {
 
 type Step = 'form' | 'location' | 'documents' | 'done'
 
+/* ------------------------------------------------------------------ */
+/*  Reverse geocode helper (Nominatim — free, no key needed)            */
+/* ------------------------------------------------------------------ */
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+      { headers: { 'Accept-Language': 'en' } }
+    )
+    const data = await res.json()
+    return data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+  } catch {
+    return `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  OSM iframe map with clickable overlay for pin placement             */
+/* ------------------------------------------------------------------ */
+function InteractiveOSMMap({
+  lat,
+  lng,
+  onLocationSelect,
+}: {
+  lat: number
+  lng: number
+  onLocationSelect: (lat: number, lng: number, address: string) => void
+}) {
+  const [geocoding, setGeocoding] = useState(false)
+  const mapRef = useRef<HTMLDivElement>(null)
+
+  const handleClick = useCallback(async (e: React.MouseEvent<HTMLDivElement>) => {
+    if (geocoding) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    const relX = x / rect.width
+    const relY = y / rect.height
+
+    // Convert click position to approximate lat/lng
+    // The map is centered on current lat/lng with a small bbox
+    const bboxPadding = 0.012
+    const clickLng = lng - bboxPadding + relX * (bboxPadding * 2)
+    const clickLat = lat + bboxPadding - relY * (bboxPadding * 2)
+
+    setGeocoding(true)
+    const addr = await reverseGeocode(clickLat, clickLng)
+    setGeocoding(false)
+    onLocationSelect(clickLat, clickLng, addr)
+  }, [lat, lng, geocoding, onLocationSelect])
+
+  // Build the OSM embed URL with a marker
+  const bbox = `${lng - 0.012},${lat - 0.008},${lng + 0.012},${lat + 0.008}`
+  const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`
+
+  return (
+    <div ref={mapRef} className="relative w-full overflow-hidden rounded-2xl border border-white/10" style={{ height: 320 }}>
+      {/* The OSM iframe — clickable overlay on top */}
+      <iframe
+        title="Map of boarding house location"
+        className="absolute inset-0 h-full w-full"
+        style={{ border: 0 }}
+        loading="lazy"
+        src={osmUrl}
+        key={`${lat.toFixed(4)}-${lng.toFixed(4)}`}
+      />
+      {/* Transparent overlay to capture clicks */}
+      <div
+        className="absolute inset-0 z-10 cursor-crosshair"
+        onClick={handleClick}
+        title="Click to set location"
+      />
+      {/* Geocoding overlay */}
+      {geocoding && (
+        <div className="absolute top-3 left-3 z-20 flex items-center gap-2 rounded-full bg-white/90 px-3 py-1.5 text-xs font-semibold text-navy-800 shadow-lg backdrop-blur">
+          <div className="h-3 w-3 animate-spin rounded-full border-2 border-brand-400 border-t-transparent" />
+          Getting address…
+        </div>
+      )}
+      {/* Pin indicator */}
+      {!geocoding && (
+        <div className="pointer-events-none absolute top-3 left-3 z-20 flex items-center gap-2 rounded-full bg-white/90 px-3 py-1.5 text-xs font-semibold text-navy-800 shadow-lg backdrop-blur">
+          <MapPin size={13} className="text-brand-500" />
+          Click anywhere to set location
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function LandlordSignup() {
   const { login } = useAuth()
   const navigate = useNavigate()
   const validIdInputRef = useRef<HTMLInputElement>(null)
   const documentsInputRef = useRef<HTMLInputElement>(null)
-  const mapCanvasRef = useRef<HTMLDivElement>(null)
-  const [dragging, setDragging] = useState(false)
 
   const [step, setStep] = useState<Step>('form')
   const [error, setError] = useState('')
@@ -102,36 +190,7 @@ export default function LandlordSignup() {
     }
   }, [])
 
-  // --- Map ---
-
-  const updateLocation = useCallback((clientX: number, clientY: number) => {
-    if (!mapCanvasRef.current) return
-    const rect = mapCanvasRef.current.getBoundingClientRect()
-    const x = clientX - rect.left
-    const y = clientY - rect.top
-    const pctX = Math.max(0, Math.min(1, x / rect.width))
-    const pctY = Math.max(0, Math.min(1, y / rect.height))
-    const newLat = 9.0 + pctY * 0.3
-    const newLng = 123.4 + pctX * 0.3
-    setLocationLat(newLat)
-    setLocationLng(newLng)
-    setLocationAddress('Approximate location near San Juan, Siquijor')
-    setLocationSaved(true)
-    setError('')
-  }, [])
-
-  const handleMapClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    updateLocation(e.clientX, e.clientY)
-  }, [updateLocation])
-
-  const handleMapMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!dragging) return
-    updateLocation(e.clientX, e.clientY)
-  }, [dragging, updateLocation])
-
-  const handleMapMouseDown = useCallback(() => { setDragging(true) }, [])
-  const handleMapMouseUp = useCallback(() => { setDragging(false) }, [])
-  const handleMapMouseLeave = useCallback(() => { setDragging(false) }, [])
+  // --- Location ---
 
   const confirmLocation = useCallback(() => {
     if (!locationSaved) {
@@ -194,6 +253,7 @@ export default function LandlordSignup() {
 
   const handleStep1Submit = (e: React.FormEvent) => {
     e.preventDefault()
+    e.stopPropagation()
     if (validateStep1()) {
       setStep('location')
     }
@@ -203,6 +263,8 @@ export default function LandlordSignup() {
 
   const handleFinalSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    e.stopPropagation()
+    if (submitting) return
     if (password !== confirmPassword) {
       setError('Passwords do not match.')
       return
@@ -255,14 +317,14 @@ export default function LandlordSignup() {
   }
 
   const goBack = useCallback(() => {
+    // Step 1's button is labelled "Back to sign in", so it has to leave the
+    // sign-up flow entirely — it used to just setStep('form') and do nothing
+    // while already on that step.
     if (step === 'location') setStep('form')
     else if (step === 'documents') setStep('location')
-    else setStep('form')
+    else navigate('/login')
     setError('')
-  }, [step])
-
-  const markerLeft = ((locationLng - 123.4) / 0.3) * 100
-  const markerTop = ((locationLat - 9.0) / 0.3) * 100
+  }, [step, navigate])
 
   const stepIndex = (s: Step): number => {
     switch (s) {
@@ -274,16 +336,8 @@ export default function LandlordSignup() {
   }
 
   return (
-    // The background layers paint immediately (no fade on this wrapper) so arriving
-    // from the sign-in page never flashes the light page colour; only the content
-    // animates, matching the boarder sign-up transition.
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-black/60 lg:flex-row">
-      {/* ---------- Artwork background — matches the boarder sign-in page ---------- */}
-      {/* Locked artwork layer: pinned to the viewport (not the page), so the picture
-          keeps exactly the same size across steps and scrolling. Height matches the
-          screen, width follows its own aspect ratio (nothing cropped top or bottom),
-          anchored left with the overflow clipped and the right side masked so the
-          artwork fades into the dark form side instead of ending on a cut. */}
+      {/* ---------- Artwork background ---------- */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
         <img
           src="/pictures/banner.png"
@@ -291,12 +345,9 @@ export default function LandlordSignup() {
           className="absolute left-0 top-0 h-full w-auto max-w-none [mask-image:linear-gradient(to_right,#000_45%,#000e_58%,#000c_68%,#0009_77%,#0006_85%,#0003_92%,#0000)]"
         />
       </div>
-      {/* Blurry black treatment over the right half only (the form side). Full-width
-          on phones, with a masked left edge so the dark field fades in gradually. */}
       <div className="absolute inset-0 bg-black/50 backdrop-blur-md lg:left-auto lg:w-1/2 lg:bg-black/60 lg:backdrop-blur-xl lg:[mask-image:linear-gradient(to_right,#0000,#0003_10%,#0009_22%,#000d_32%,#000_45%)]" />
 
-      {/* ---------- Form column — right side on desktop. The card caps its own width,
-          so this mirrors the boarder sign-in page. ---------- */}
+      {/* ---------- Form column ---------- */}
       <motion.div
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
@@ -473,93 +524,71 @@ export default function LandlordSignup() {
                 Select the location of your boarding house on the map. This helps boarders find you.
               </p>
 
-              {/* Map */}
-              <div className="relative">
-                <div
-                  ref={mapCanvasRef}
-                  onClick={handleMapClick}
-                  onMouseDown={handleMapMouseDown}
-                  onMouseMove={handleMapMouseMove}
-                  onMouseUp={handleMapMouseUp}
-                  onMouseLeave={handleMapMouseLeave}
-                  className={cn(
-                    'relative h-64 w-full rounded-2xl border border-white/10 bg-navy-900 overflow-hidden cursor-crosshair transition',
-                    dragging && 'cursor-grabbing',
-                  )}
-                  role="application"
-                  aria-label="Map to select your boarding house location"
+              {/* Interactive OSM Map */}
+              <InteractiveOSMMap
+                lat={locationLat}
+                lng={locationLng}
+                onLocationSelect={(lat, lng, addr) => {
+                  setLocationLat(lat)
+                  setLocationLng(lng)
+                  setLocationAddress(addr)
+                  setLocationSaved(true)
+                  setError('')
+                }}
+              />
+
+              {/* Action buttons */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={useCurrentLocation}
+                  className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white/80 transition hover:bg-white/10 hover:text-white"
                 >
-                  {/* Simulated map background */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-navy-800 via-navy-700 to-navy-900" />
-
-                  {/* Grid */}
-                  <svg className="absolute inset-0 w-full h-full opacity-20" viewBox="0 0 400 400" preserveAspectRatio="none">
-                    <defs>
-                      <pattern id="grid-landlord" width="40" height="40" patternUnits="userSpaceOnUse">
-                        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#33C7A5" strokeWidth="0.5"/>
-                      </pattern>
-                    </defs>
-                    <rect width="100%" height="100%" fill="url(#grid-landlord)" />
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <circle cx="12" cy="12" r="3"/>
+                    <line x1="12" y1="2" x2="12" y2="6"/>
+                    <line x1="12" y1="18" x2="12" y2="22"/>
+                    <line x1="2" y1="12" x2="6" y2="12"/>
+                    <line x1="18" y1="12" x2="22" y2="12"/>
                   </svg>
-
-                  {/* Siquijor shape */}
-                  <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid meet">
-                    <ellipse
-                      cx="200"
-                      cy="200"
-                      rx="80"
-                      ry="120"
-                      fill="rgba(51,199,165,0.15)"
-                      stroke="#33C7A5"
-                      strokeWidth="1.5"
-                      strokeDasharray="4 4"
-                    />
-                    <text x="200" y="195" textAnchor="middle" fill="#33C7A5" fontSize="11" fontWeight="600" fontFamily="Inter, sans-serif">
-                      Siquijor
-                    </text>
+                  My location
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.open(`https://www.google.com/maps/@${locationLat},${locationLng},3a,75y,90t/data=!3m6!1e1!3m4!1s!2e0!7i13312!8i6656`, '_blank')}
+                  className="flex items-center justify-center gap-2 rounded-xl border border-brand-400/30 bg-brand-500/10 px-4 py-2.5 text-sm font-semibold text-brand-300 transition hover:bg-brand-500/20 hover:text-brand-200"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
                   </svg>
-
-                  {/* Location marker */}
-                  <div
-                    className="absolute transform -translate-x-1/2 -translate-y-1/2 transition-all duration-200"
-                    style={{ left: `${markerLeft}%`, top: `${markerTop}%` }}
-                  >
-                    <div className="flex flex-col items-center">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 shadow-lg ring-2 ring-white">
-                        <MapPin size={16} className="text-white" />
-                      </div>
-                      <div className="mt-1 flex h-2 w-2 rounded-full bg-brand-500 animate-ping" />
-                    </div>
-                  </div>
-
-                  {/* Instruction */}
-                  {!locationSaved && (
-                    <div className="absolute top-3 left-3 flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs text-white/80">
-                      <div className="h-3 w-3 animate-spin rounded-full border-2 border-brand-400 border-t-transparent" />
-                      Click to set location
-                    </div>
-                  )}
-                </div>
-
-                {/* Map controls */}
-                <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 shadow-lg backdrop-blur">
-                  <button
-                    type="button"
-                    onClick={useCurrentLocation}
-                    className="flex items-center gap-1.5 rounded-full bg-brand-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-brand-400"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <circle cx="12" cy="12" r="10"/>
-                      <circle cx="12" cy="12" r="3"/>
-                      <line x1="12" y1="2" x2="12" y2="6"/>
-                      <line x1="12" y1="18" x2="12" y2="22"/>
-                      <line x1="2" y1="12" x2="6" y2="12"/>
-                      <line x1="18" y1="12" x2="22" y2="12"/>
-                    </svg>
-                    Use my location
-                  </button>
-                </div>
+                  Street View
+                </button>
               </div>
+
+              {/* Street View Preview */}
+              {locationSaved && (
+                <div className="relative rounded-2xl overflow-hidden border border-white/10">
+                  <iframe
+                    title="Street View Preview"
+                    width="100%"
+                    height="200"
+                    style={{ border: 0 }}
+                    loading="lazy"
+                    allowFullScreen
+                    src={`https://www.google.com/maps/embed?pb=!4v${Date.now()}!6m8!1m7!1s!2m2!1d${locationLat}!2d${locationLng}!3f0!4f0!5f0.7820865974627469`}
+                    className="rounded-2xl"
+                  />
+                  <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                      <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    Street View Preview
+                  </div>
+                </div>
+              )}
 
               {/* Location info */}
               <div className="rounded-xl border border-white/10 bg-white/5 p-4">
@@ -619,7 +648,7 @@ export default function LandlordSignup() {
                 id="valid-id-upload"
                 type="file"
                 accept={IMAGE_ACCEPT}
-                required={!validId}
+                tabIndex={-1}
                 onChange={(e) => handleImageUpload(e, setValidId)}
                 className="sr-only"
               />
@@ -628,7 +657,7 @@ export default function LandlordSignup() {
                 id="legal-documents-upload"
                 type="file"
                 accept={IMAGE_ACCEPT}
-                required={!legalDocuments}
+                tabIndex={-1}
                 onChange={(e) => handleImageUpload(e, setLegalDocuments)}
                 className="sr-only"
               />

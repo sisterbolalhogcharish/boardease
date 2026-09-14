@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as api from './api'
+import { useLandlordHouse } from './landlordHouse'
 
 /* ------------------------------- Queries -------------------------- */
 export function useHouses(filters?: api.SearchFilters, sort?: api.SortKey) {
@@ -29,35 +30,75 @@ export function useReviews(houseId?: string) {
   return useQuery({ queryKey: ['reviews', houseId], queryFn: () => api.getReviews(houseId) })
 }
 
+/* --------------------- Owner-scoped landlord reads ------------------ */
+/*
+ * These all pull the signed-in landlord's id from `LandlordHouseProvider` and
+ * hand it to the API, which resolves their boarding house server-side. A
+ * landlord with no house yet resolves to "nothing", so the console shows real
+ * zeros instead of the seeded demo house.
+ */
+
 export function useDashboard() {
-  return useQuery({ queryKey: ['dashboard'], queryFn: api.getDashboardOverview })
+  const { userId, loading } = useLandlordHouse()
+  return useQuery({
+    queryKey: ['dashboard', userId],
+    queryFn: () => api.getDashboardOverview({ userId }),
+    enabled: !loading,
+  })
 }
 
 export function useAnalytics() {
-  return useQuery({ queryKey: ['analytics'], queryFn: api.getAnalytics })
+  const { userId, loading } = useLandlordHouse()
+  return useQuery({
+    queryKey: ['analytics', userId],
+    queryFn: () => api.getAnalytics({ userId }),
+    enabled: !loading,
+  })
 }
 
 export function usePayments(opts?: { status?: string; month?: string; q?: string }) {
+  const { userId, loading } = useLandlordHouse()
   return useQuery({
-    queryKey: ['payments', opts],
-    queryFn: () => api.getPayments(opts as { status?: never; month?: string; q?: string } | undefined),
+    queryKey: ['payments', opts, userId],
+    queryFn: () => api.getPayments({ ...(opts as { status?: never; month?: string; q?: string } | undefined), userId }),
+    enabled: !loading,
   })
 }
 
 export function usePaymentMonths() {
-  return useQuery({ queryKey: ['payment-months'], queryFn: api.getPaymentMonths })
+  const { userId, loading } = useLandlordHouse()
+  return useQuery({
+    queryKey: ['payment-months', userId],
+    queryFn: () => api.getPaymentMonths({ userId }),
+    enabled: !loading,
+  })
 }
 
 export function useBoarders(opts?: { q?: string; gender?: 'male' | 'female'; roomId?: string }) {
-  return useQuery({ queryKey: ['boarders', opts], queryFn: () => api.getBoarders(opts) })
+  const { userId, loading } = useLandlordHouse()
+  return useQuery({
+    queryKey: ['boarders', opts, userId],
+    queryFn: () => api.getBoarders({ ...opts, userId }),
+    enabled: !loading,
+  })
 }
 
 export function useRooms() {
-  return useQuery({ queryKey: ['rooms'], queryFn: api.getRooms })
+  const { userId, loading } = useLandlordHouse()
+  return useQuery({
+    queryKey: ['rooms', userId],
+    queryFn: () => api.getRooms({ userId }),
+    enabled: !loading,
+  })
 }
 
 export function useRoomStatus() {
-  return useQuery({ queryKey: ['room-status'], queryFn: api.getRooms })
+  const { userId, loading } = useLandlordHouse()
+  return useQuery({
+    queryKey: ['room-status', userId],
+    queryFn: () => api.getRooms({ userId }),
+    enabled: !loading,
+  })
 }
 
 export function useNotifications(userId?: string) {
@@ -165,12 +206,138 @@ export function useConversationThread(id?: string, userId?: string) {
 }
 
 export function useSubscription() {
-  return useQuery({ queryKey: ['subscription'], queryFn: api.getSubscription })
+  // Scoped to the signed-in landlord. Without this the API always answered
+  // "no plan", so a landlord could subscribe, have the admin approve it, and
+  // still see every paid feature locked forever.
+  const { userId } = useLandlordHouse()
+  return useQuery({
+    queryKey: ['subscription', userId],
+    queryFn: () => api.getSubscription({ userId }),
+  })
 }
 
 export function useAssistant() {
   return useMutation({
     mutationFn: (question: string) => api.askAssistant(question),
+  })
+}
+
+/* ------------------ Subscription receipts & support ---------------- */
+
+export function useSubscriptionReceipts() {
+  const { userId } = useLandlordHouse()
+  return useQuery({
+    queryKey: ['subscription-receipts', userId],
+    queryFn: () => api.getSubscriptionReceipts(userId!),
+    enabled: !!userId,
+  })
+}
+
+export function useSubmitSubscriptionReceipt() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Parameters<typeof api.submitSubscriptionReceipt>[0]) => api.submitSubscriptionReceipt(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['subscription-receipts'] })
+      qc.invalidateQueries({ queryKey: ['notifications'] })
+    },
+  })
+}
+
+export function useSupportMessages() {
+  const { userId } = useLandlordHouse()
+  return useQuery({
+    queryKey: ['support-messages', userId],
+    queryFn: () => api.getSupportMessages(userId!),
+    enabled: !!userId,
+  })
+}
+
+export function useSendSupportMessage() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Parameters<typeof api.sendSupportMessage>[0]) => api.sendSupportMessage(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['support-messages'] }),
+  })
+}
+
+/* --------------------------- Admin queries ------------------------- */
+
+export function useAdminReceipts(status?: string) {
+  return useQuery({ queryKey: ['admin-receipts', status], queryFn: () => api.getAdminReceipts(status) })
+}
+
+export function useReviewAdminReceipt() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, status, notes }: { id: string; status: 'approved' | 'rejected'; notes?: string }) =>
+      api.reviewAdminReceipt(id, status, notes),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-receipts'] })
+      qc.invalidateQueries({ queryKey: ['admin-stats'] })
+      qc.invalidateQueries({ queryKey: ['admin-landlords'] })
+    },
+  })
+}
+
+export function useAdminMessages() {
+  return useQuery({ queryKey: ['admin-messages'], queryFn: api.getAdminMessages })
+}
+
+export function useReplyAdminMessage() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, reply }: { id: string; reply: string }) => api.replyAdminMessage(id, reply),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-messages'] })
+      qc.invalidateQueries({ queryKey: ['admin-stats'] })
+    },
+  })
+}
+
+/* -------------------- My Boarding House mutations ------------------ */
+
+/** Invalidating `['landlord-house']` refreshes the console header, sidebar and
+ *  the My Boarding House page in one go. */
+function invalidateHouse(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['landlord-house'] })
+  qc.invalidateQueries({ queryKey: ['houses'] })
+  qc.invalidateQueries({ queryKey: ['featured'] })
+  qc.invalidateQueries({ queryKey: ['locations'] })
+}
+
+export function useSaveLandlordHouse() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: api.LandlordHouseInput) => api.saveLandlordHouse(input),
+    onSuccess: () => invalidateHouse(qc),
+  })
+}
+
+export function useAddLandlordHouseImages() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userId, images }: { userId: number | string; images: string[] }) =>
+      api.addLandlordHouseImages(userId, images),
+    onSuccess: () => invalidateHouse(qc),
+  })
+}
+
+export function useReorderLandlordHouseImages() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userId, ids }: { userId: number | string; ids: string[] }) =>
+      api.reorderLandlordHouseImages(userId, ids),
+    onSuccess: () => invalidateHouse(qc),
+  })
+}
+
+export function useDeleteLandlordHouseImage() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userId, imageId }: { userId: number | string; imageId: string }) =>
+      api.deleteLandlordHouseImage(userId, imageId),
+    onSuccess: () => invalidateHouse(qc),
   })
 }
 
@@ -190,8 +357,11 @@ export function useMarkPaymentPaid() {
 
 export function useAddRoom() {
   const qc = useQueryClient()
+  // The Rooms form has no idea which property it belongs to — the API resolves
+  // the house from the signed-in landlord instead.
+  const { userId } = useLandlordHouse()
   return useMutation({
-    mutationFn: (input: Parameters<typeof api.addRoom>[0]) => api.addRoom(input),
+    mutationFn: (input: Parameters<typeof api.addRoom>[0]) => api.addRoom({ ...input, userId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['rooms'] })
       qc.invalidateQueries({ queryKey: ['room-status'] })
@@ -257,14 +427,19 @@ export function useRemoveBoarder() {
 }
 
 export function useNeedsAttention() {
-  return useQuery({ queryKey: ['needs-attention'], queryFn: async () => {
-    const payments = await api.getPayments({ status: 'overdue' })
-    const pending = await api.getPayments({ status: 'pending' })
-    return [...payments, ...pending].map(p => ({
-      id: p.id, name: p.boarderName, roomNo: p.roomNo,
-      amount: p.amount, status: p.status as 'overdue' | 'pending',
-    })).sort((a, b) => (a.status === 'overdue' ? -1 : 1) - (b.status === 'overdue' ? -1 : 1))
-  }})
+  const { userId, loading } = useLandlordHouse()
+  return useQuery({
+    queryKey: ['needs-attention', userId],
+    enabled: !loading,
+    queryFn: async () => {
+      const payments = await api.getPayments({ status: 'overdue', userId })
+      const pending = await api.getPayments({ status: 'pending', userId })
+      return [...payments, ...pending].map(p => ({
+        id: p.id, name: p.boarderName, roomNo: p.roomNo,
+        amount: p.amount, status: p.status as 'overdue' | 'pending',
+      })).sort((a, b) => (a.status === 'overdue' ? -1 : 1) - (b.status === 'overdue' ? -1 : 1))
+    },
+  })
 }
 
 export function useMarkNotificationsRead() {

@@ -125,6 +125,8 @@ export interface Notification {
   type: 'rent-due' | 'late' | 'contract' | 'vacant' | 'occupancy' | 'review' | 'subscription'
   title: string
   message: string
+  /** In-app destination, e.g. the payment history page after an admin reply. */
+  link?: string | null
   date: string
   read: boolean
 }
@@ -192,7 +194,9 @@ export interface DashboardOverview {
 }
 
 export interface Subscription {
-  plan: 'Starter' | 'Standard' | 'Premium'
+  /** `'None'` is a real response — the API returns it when the signed-in
+   *  landlord has no active plan, so it belongs in the type. */
+  plan: 'None' | 'Basic' | 'Standard' | 'Premium'
   price: number
   cycle: 'month' | 'year'
   status: 'active' | 'expiring'

@@ -136,8 +136,11 @@ export interface PaymentRow extends Payment {
   roomNo: string
 }
 
-export async function getPayments(opts?: { status?: PaymentStatus; month?: string; q?: string }): Promise<PaymentRow[]> {
+export async function getPayments(
+  opts?: { status?: PaymentStatus; month?: string; q?: string } & OwnerScope,
+): Promise<PaymentRow[]> {
   const params = new URLSearchParams()
+  if (opts?.userId) params.set('userId', String(opts.userId))
   if (opts?.status) params.set('status', opts.status)
   if (opts?.month) params.set('month', opts.month)
   if (opts?.q) params.set('q', opts.q)
@@ -145,8 +148,8 @@ export async function getPayments(opts?: { status?: PaymentStatus; month?: strin
   return fetchJSON<PaymentRow[]>(`/payments${qs ? `?${qs}` : ''}`)
 }
 
-export async function getPaymentMonths(): Promise<string[]> {
-  return fetchJSON<string[]>('/payments/months')
+export async function getPaymentMonths(scope?: OwnerScope): Promise<string[]> {
+  return fetchJSON<string[]>(`/payments/months${scopeQuery(scope)}`)
 }
 
 export async function markPaymentPaid(id: string, method: string): Promise<PaymentRow> {
@@ -159,8 +162,11 @@ export async function markPaymentPaid(id: string, method: string): Promise<Payme
 /* ------------------------------------------------------------------ */
 /*  Boarders                                                           */
 /* ------------------------------------------------------------------ */
-export async function getBoarders(opts?: { q?: string; gender?: 'male' | 'female'; roomId?: string }): Promise<any[]> {
+export async function getBoarders(
+  opts?: { q?: string; gender?: 'male' | 'female'; roomId?: string } & OwnerScope,
+): Promise<any[]> {
   const params = new URLSearchParams()
+  if (opts?.userId) params.set('userId', String(opts.userId))
   if (opts?.q) params.set('q', opts.q)
   if (opts?.gender) params.set('gender', opts.gender)
   if (opts?.roomId) params.set('roomId', opts.roomId)
@@ -182,8 +188,8 @@ export async function removeBoarder(id: string): Promise<void> {
 /* ------------------------------------------------------------------ */
 /*  Rooms                                                              */
 /* ------------------------------------------------------------------ */
-export async function getRooms(): Promise<Room[]> {
-  return fetchJSON<Room[]>('/rooms')
+export async function getRooms(scope?: OwnerScope): Promise<Room[]> {
+  return fetchJSON<Room[]>(`/rooms${scopeQuery(scope)}`)
 }
 
 export async function addRoom(input: any): Promise<Room> {
@@ -207,15 +213,15 @@ export async function updateRoom(id: string, patch: any): Promise<Room> {
 /* ------------------------------------------------------------------ */
 /*  Dashboard                                                          */
 /* ------------------------------------------------------------------ */
-export async function getDashboardOverview(): Promise<DashboardOverview> {
-  return fetchJSON<DashboardOverview>('/dashboard/overview')
+export async function getDashboardOverview(scope?: OwnerScope): Promise<DashboardOverview> {
+  return fetchJSON<DashboardOverview>(`/dashboard/overview${scopeQuery(scope)}`)
 }
 
-export async function getAnalytics(): Promise<AnalyticsData> {
-  // Build analytics from payments + rooms
+export async function getAnalytics(scope?: OwnerScope): Promise<AnalyticsData> {
+  // Build analytics from payments + rooms, scoped to the landlord's own house.
   const [payments, rooms] = await Promise.all([
-    fetchJSON<any[]>('/payments'),
-    fetchJSON<Room[]>('/rooms'),
+    fetchJSON<any[]>(`/payments${scopeQuery(scope)}`),
+    fetchJSON<Room[]>(`/rooms${scopeQuery(scope)}`),
   ])
 
   // Revenue by month
@@ -278,8 +284,107 @@ export async function markNotificationRead(id: string, userId: string) {
   await fetchJSON(`/notifications/${id}/read`, { method: 'PUT', body: JSON.stringify({ userId }) })
 }
 
-export async function getSubscription(): Promise<Subscription> {
-  return fetchJSON<Subscription>('/subscription')
+export async function getSubscription(scope?: OwnerScope): Promise<Subscription> {
+  return fetchJSON<Subscription>(`/subscription${scopeQuery(scope)}`)
+}
+
+/* ------------------------------------------------------------------ */
+/*  Subscription receipts (payment history)                            */
+/* ------------------------------------------------------------------ */
+
+export type ReceiptStatus = 'pending' | 'approved' | 'rejected'
+
+export interface SubscriptionReceipt {
+  id: string
+  landlordId: string
+  landlordName: string
+  landlordEmail: string
+  requestedPlan: string
+  planPrice: number
+  receiptUrl: string
+  status: ReceiptStatus
+  notes: string | null
+  submittedAt: string | null
+  reviewedAt: string | null
+}
+
+/** Send proof of payment to the admin for verification. */
+export async function submitSubscriptionReceipt(input: {
+  userId: number | string
+  plan: string
+  receiptUrl: string
+}): Promise<{ receipt: SubscriptionReceipt }> {
+  return fetchJSON<{ receipt: SubscriptionReceipt }>('/subscription/receipts', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function getSubscriptionReceipts(userId: number | string): Promise<SubscriptionReceipt[]> {
+  return fetchJSON<SubscriptionReceipt[]>(`/subscription/receipts?userId=${encodeURIComponent(String(userId))}`)
+}
+
+/* ------------------------------------------------------------------ */
+/*  Support — landlord ↔ admin messages about a plan                  */
+/* ------------------------------------------------------------------ */
+
+export interface SupportMessage {
+  id: string
+  userId: string
+  landlordId: string
+  landlordName: string
+  landlordEmail: string
+  plan: string
+  body: string
+  reply: string | null
+  repliedAt: string | null
+  createdAt: string | null
+}
+
+export async function getSupportMessages(userId: number | string): Promise<SupportMessage[]> {
+  return fetchJSON<SupportMessage[]>(`/support/messages?userId=${encodeURIComponent(String(userId))}`)
+}
+
+export async function sendSupportMessage(input: {
+  userId: number | string
+  plan?: string
+  body: string
+}): Promise<{ message: SupportMessage }> {
+  return fetchJSON<{ message: SupportMessage }>('/support/messages', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+/* ------------------------------------------------------------------ */
+/*  Admin — receipts & support inbox                                   */
+/* ------------------------------------------------------------------ */
+
+export async function getAdminReceipts(status?: string): Promise<SubscriptionReceipt[]> {
+  const qs = status && status !== 'all' ? `?status=${status}` : ''
+  return fetchJSON<SubscriptionReceipt[]>(`/admin/receipts${qs}`)
+}
+
+export async function reviewAdminReceipt(
+  id: string,
+  status: 'approved' | 'rejected',
+  notes?: string,
+): Promise<SubscriptionReceipt> {
+  return fetchJSON<SubscriptionReceipt>(`/admin/receipts/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ status, notes }),
+  })
+}
+
+export async function getAdminMessages(): Promise<SupportMessage[]> {
+  return fetchJSON<SupportMessage[]>('/admin/messages')
+}
+
+export async function replyAdminMessage(id: string, reply: string): Promise<{ message: SupportMessage }> {
+  return fetchJSON<{ message: SupportMessage }>(`/admin/messages/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ reply }),
+  })
 }
 
 /* ------------------------------------------------------------------ */
@@ -332,6 +437,133 @@ export async function registerLandlordAPI(input: LandlordRegisterInput) {
     method: 'POST',
     body: JSON.stringify(input),
   })
+}
+
+/* ------------------------------------------------------------------ */
+/*  My Boarding House (the signed-in landlord's own listing)            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Landlord-scoped reads. Passing the signed-in landlord's id lets the API
+ * resolve which boarding house the request is about, so a landlord only ever
+ * sees their own rooms, boarders and payments.
+ */
+export interface OwnerScope {
+  userId?: number | string
+}
+
+function scopeQuery(scope?: OwnerScope): string {
+  return scope?.userId ? `?userId=${encodeURIComponent(String(scope.userId))}` : ''
+}
+
+export interface LandlordHouseImage {
+  id: string
+  url: string
+}
+
+/** The owner-facing shape of a boarding house — everything the Explore page
+ *  shows, plus the fields only the owner can see (verification, rating). */
+export interface LandlordHouse {
+  id: string
+  landlordId: string
+  name: string
+  tagline: string
+  municipality: string
+  barangay: string
+  address: string
+  description: string
+  lat: number | null
+  lng: number | null
+  monthlyRent: number
+  curfew: string
+  visitorPolicy: string
+  rules: string[]
+  schoolNearby: string[]
+  distanceFromSchool: string
+  wifi: boolean
+  aircon: boolean
+  kitchen: boolean
+  laundry: boolean
+  parking: boolean
+  petFriendly: boolean
+  verified: boolean
+  topRated: boolean
+  rating: number
+  reviewsCount: number
+  totalRooms: number
+  occupiedRooms: number
+  images: LandlordHouseImage[]
+  createdAt: string
+}
+
+export interface LandlordHouseResponse {
+  house: LandlordHouse | null
+  landlord: {
+    id: string
+    businessName: string
+    locationPref: string
+    locationLat: number | null
+    locationLng: number | null
+  } | null
+  /** Location captured at sign-up — prefills the create form. */
+  suggested: { address: string; municipality: string; lat: number | null; lng: number | null } | null
+}
+
+export interface LandlordHouseInput {
+  userId: number | string
+  name: string
+  municipality: string
+  barangay: string
+  address: string
+  tagline?: string
+  description?: string
+  lat?: number | null
+  lng?: number | null
+  monthlyRent?: number
+  curfew?: string
+  visitorPolicy?: string
+  rules?: string[]
+  schoolNearby?: string[]
+  distanceFromSchool?: string
+  wifi?: boolean
+  aircon?: boolean
+  kitchen?: boolean
+  laundry?: boolean
+  parking?: boolean
+  petFriendly?: boolean
+}
+
+export async function getLandlordHouse(userId: number | string): Promise<LandlordHouseResponse> {
+  return fetchJSON<LandlordHouseResponse>(`/landlord/house?userId=${encodeURIComponent(String(userId))}`)
+}
+
+export async function saveLandlordHouse(input: LandlordHouseInput): Promise<{ house: LandlordHouse }> {
+  return fetchJSON<{ house: LandlordHouse }>('/landlord/house', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function addLandlordHouseImages(userId: number | string, images: string[]): Promise<{ house: LandlordHouse }> {
+  return fetchJSON<{ house: LandlordHouse }>('/landlord/house/images', {
+    method: 'POST',
+    body: JSON.stringify({ userId, images }),
+  })
+}
+
+/** Photo order is the gallery order — index 0 is the listing cover. */
+export async function reorderLandlordHouseImages(userId: number | string, ids: string[]): Promise<{ house: LandlordHouse }> {
+  return fetchJSON<{ house: LandlordHouse }>('/landlord/house/images', {
+    method: 'PUT',
+    body: JSON.stringify({ userId, ids }),
+  })
+}
+
+export async function deleteLandlordHouseImage(userId: number | string, imageId: string): Promise<{ house: LandlordHouse }> {
+  return fetchJSON<{ house: LandlordHouse }>(
+    `/landlord/house/images/${imageId}?userId=${encodeURIComponent(String(userId))}`,
+    { method: 'DELETE' },
+  )
 }
 
 /* ------------------------------------------------------------------ */
@@ -679,15 +911,15 @@ export async function askAssistant(question: string) {
 /* ------------------------------------------------------------------ */
 export const PLANS: Subscription[] = [
   {
-    plan: 'Starter', price: 100, cycle: 'month', status: 'active', renewsOn: '', boarderLimit: 5,
-    features: ['Basic dashboard', 'Room management', 'Payment tracking', 'PDF reports'],
+    plan: 'Basic', price: 199, cycle: 'month', status: 'active', renewsOn: '', boarderLimit: 5,
+    features: ['Manage up to 5 boards', 'AI Assistant', 'Real-time notifications', 'Basic dashboard', 'Analytics', 'Data backup', 'Basic reports'],
   },
   {
-    plan: 'Standard', price: 200, cycle: 'month', status: 'active', renewsOn: '2026-08-28', boarderLimit: 15,
-    features: ['Everything in Starter', 'Analytics & charts', 'AI Assistant', 'Smart notifications', 'Reviews management', 'Excel export'],
+    plan: 'Standard', price: 499, cycle: 'month', status: 'active', renewsOn: '', boarderLimit: 15,
+    features: ['Manage up to 15 boards', 'AI Assistant', 'Real-time notifications', 'Enhanced dashboard', 'Analytics', 'Data backup', 'Detailed reports'],
   },
   {
-    plan: 'Premium', price: 500, cycle: 'year', status: 'active', renewsOn: '', boarderLimit: null,
-    features: ['Everything unlocked', 'Unlimited boarders', 'Advanced analytics', 'Priority support', 'Unlimited storage', 'Future premium features'],
+    plan: 'Premium', price: 899, cycle: 'month', status: 'active', renewsOn: '', boarderLimit: 30,
+    features: ['Manage up to 30 boards', 'AI Assistant', 'Real-time notifications', 'Advanced dashboard', 'Advanced analytics', 'Data backup', 'Advanced reports', 'Priority support', 'Enhanced management controls'],
   },
 ]

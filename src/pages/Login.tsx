@@ -22,7 +22,7 @@ const ROLE_CARDS: { role: UserRole; icon: typeof Building2; title: string; desc:
   },
 ]
 
-const DASHBOARD_FOR: Record<UserRole, string> = { landlord: '/dashboard', boarder: '/boarder' }
+const DASHBOARD_FOR: Record<UserRole, string> = { landlord: '/dashboard', boarder: '/boarder', admin: '/admin' }
 
 /** Shared timing for every fade on this page, so panels feel like one motion. */
 const FADE = { duration: 0.32, ease: 'easeOut' } as const
