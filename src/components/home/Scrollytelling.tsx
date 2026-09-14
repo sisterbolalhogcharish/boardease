@@ -1,23 +1,6 @@
-import { motion, useScroll, useTransform, useSpring, AnimatePresence } from 'framer-motion'
-import {
-  ArrowRight,
-  BadgeCheck,
-  BedDouble,
-  Bot,
-  CalendarCheck,
-  Check,
-  CreditCard,
-  FileText,
-  Receipt,
-  Search,
-  Send,
-  ShieldCheck,
-  Sparkles,
-  Star,
-  TrendingUp,
-  Wallet,
-} from 'lucide-react'
-import { useRef, useState, useEffect } from 'react'
+import { motion, useScroll, useTransform, useSpring, useMotionValueEvent, AnimatePresence } from 'framer-motion'
+import { ArrowRight, Sparkles } from 'lucide-react'
+import { useRef, useState } from 'react'
 
 /* ================================================================== */
 /*  Step data                                                          */
@@ -28,36 +11,32 @@ const STEPS = [
     label: 'Discover',
     title: 'Search, compare, and find verified boarding houses that fit your needs.',
     accent: 'from-brand-500 to-brand-600',
-    accentBg: 'bg-brand-500',
     accentText: 'text-brand-500',
-    accentLight: 'bg-brand-50',
+    image: '/howitworks/discover.png',
   },
   {
     num: '02',
     label: 'Book a Viewing',
     title: 'Message landlords, schedule a viewing, and secure your bed — all inside BoardEase.',
     accent: 'from-mint-400 to-mint-600',
-    accentBg: 'bg-mint-500',
     accentText: 'text-mint-600',
-    accentLight: 'bg-mint-50',
+    image: '/howitworks/bookaviewing.png',
   },
   {
     num: '03',
-    label: 'Pay & Move In',
-    title: 'Pay digitally and keep your receipts, contracts, and payment history in one place.',
+    label: 'Subscribe and Manage',
+    title: 'Choose a plan, subscribe, and keep your receipts, contracts, and payment history in one place.',
     accent: 'from-amber-400 to-amber-600',
-    accentBg: 'bg-amber-500',
     accentText: 'text-amber-600',
-    accentLight: 'bg-amber-50',
+    image: '/howitworks/subscribeandmanage.png',
   },
   {
     num: '04',
     label: 'Manage Smartly',
     title: 'Track occupancy, payments, and analytics — with an AI assistant that answers in seconds.',
     accent: 'from-navy-600 to-brand-600',
-    accentBg: 'bg-navy-600',
     accentText: 'text-navy-800',
-    accentLight: 'bg-navy-50',
+    image: '/pictures/landlord.png',
   },
 ]
 
@@ -439,6 +418,19 @@ function StepManageVisual(props: StepManageVisualProps) {
   )
 }
 
+/* ------------------------------------------------------------------ */
+/*  Scrollytelling timing                                              */
+/* ------------------------------------------------------------------ */
+const STEP_COUNT = STEPS.length
+/** Each step owns an equal slice of the section's scroll progress. */
+const SLICE = 1 / STEP_COUNT
+/** Half-width of the text/visual cross-fade, in progress units. The fade
+ *  is centred on the slice boundary so the outgoing and incoming step are
+ *  always at mirror-image opacity — this is what keeps the words and the
+ *  artwork switching at exactly the same scroll position. */
+const FADE = 0.05
+
+
 /* ================================================================== */
 /*  Main Scrollytelling Component                                       */
 /* ================================================================== */
@@ -451,46 +443,26 @@ export default function Scrollytelling() {
     offset: ['start start', 'end end'],
   })
 
-  const smoothProgress = useSpring(scrollYProgress, { stiffness: 100, damping: 30 })
+  // Spring that tracks the scroll closely (little lag) but still glides, so
+  // the cross-fade starts the moment you scroll instead of trailing behind it.
+  const smoothProgress = useSpring(scrollYProgress, { stiffness: 200, damping: 34, mass: 0.35, restDelta: 0.0005 })
 
-  // Determine active step from scroll progress
-  useEffect(() => {
-    return smoothProgress.on('change', (v) => {
-      const step = Math.min(3, Math.floor(v * 4))
-      setActiveStep(step)
-    })
-  }, [smoothProgress])
-
-  // Transform for each step's opacity
-  const step0Opacity = useTransform(smoothProgress, [0, 0.05, 0.2, 0.25], [0, 1, 1, 0])
-  const step1Opacity = useTransform(smoothProgress, [0.2, 0.3, 0.5, 0.55], [0, 1, 1, 0])
-  const step2Opacity = useTransform(smoothProgress, [0.5, 0.55, 0.75, 0.8], [0, 1, 1, 0])
-  const step3Opacity = useTransform(smoothProgress, [0.75, 0.8, 0.98, 1], [0, 1, 1, 0.8])
-
-  const stepOpacities = [step0Opacity, step1Opacity, step2Opacity, step3Opacity]
-
-  // Step-level progress for visual animations
-  const visualProgresses = [
-    useTransform(smoothProgress, [0, 0.25], [0, 1]),
-    useTransform(smoothProgress, [0.25, 0.5], [0, 1]),
-    useTransform(smoothProgress, [0.5, 0.75], [0, 1]),
-    useTransform(smoothProgress, [0.75, 1], [0, 1]),
+  // Text + visual cross-fades, centred on each slice boundary. The outgoing
+  // and incoming step are always at mirrored opacity, so nothing ever pops.
+  const stepOpacities = [
+    useTransform(smoothProgress, [0, FADE, SLICE - FADE, SLICE], [0, 1, 1, 0]),
+    useTransform(smoothProgress, [SLICE - FADE, SLICE, 2 * SLICE - FADE, 2 * SLICE], [0, 1, 1, 0]),
+    useTransform(smoothProgress, [2 * SLICE - FADE, 2 * SLICE, 3 * SLICE - FADE, 3 * SLICE], [0, 1, 1, 0]),
+    useTransform(smoothProgress, [3 * SLICE - FADE, 3 * SLICE, 0.99, 1], [0, 1, 1, 1]),
   ]
 
-  const [visualValues, setVisualValues] = useState([0, 0, 0, 0])
-
-  useEffect(() => {
-    const unsubs = visualProgresses.map((p, i) =>
-      p.on('change', (v) => {
-        setVisualValues((prev) => {
-          const next = [...prev]
-          next[i] = v
-          return next
-        })
-      })
-    )
-    return () => unsubs.forEach((u) => u())
-  }, [])
+  // The step switch lands on the midpoint of the cross-fade, so the index and
+  // the blend agree. Only fires when the index actually changes — no re-render
+  // on every scroll frame.
+  useMotionValueEvent(smoothProgress, 'change', (v) => {
+    const next = v < SLICE - FADE / 2 ? 0 : v < 2 * SLICE - FADE / 2 ? 1 : v < 3 * SLICE - FADE / 2 ? 2 : 3
+    setActiveStep((prev) => (prev === next ? prev : next))
+  })
 
   return (
     <section id="how-it-works" className="relative bg-navy-950 text-white">
@@ -510,18 +482,22 @@ export default function Scrollytelling() {
       </div>
 
       {/* Scrollytelling body */}
-      <div ref={containerRef} className="relative" style={{ height: '80vh' }}>
-        <div className="flex items-center">
-          <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-4 px-4 py-6 sm:px-6 lg:grid-cols-[1fr_1fr] lg:gap-10 lg:py-8">
+<div ref={containerRef} className="relative" style={{ height: '320vh' }}>
+        {/* Sticky viewport — this is what keeps the step pinned while the
+            500vh track scrolls past, so the words on screen always match the
+            scroll position. */}
+        <div className="sticky top-0 flex h-screen items-center">
+          <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[1fr_1.1fr] lg:gap-16 lg:py-10">
             {/* Step text — MOBILE: non-absolute, above visual. DESKTOP: absolute side-by-side */}
             <div className="relative order-2 flex flex-col justify-center lg:order-1">
-              {/* Desktop: absolute stacked steps */}
+              {/* Desktop: absolute stacked steps, cross-fading continuously */}
               <div className="hidden lg:block">
                 {STEPS.map((step, i) => (
                   <motion.div
                     key={step.num}
                     style={{ opacity: stepOpacities[i] }}
-                    className="absolute inset-y-0 flex flex-col justify-center px-8"
+aria-hidden={i !== activeStep}
+                    className="absolute inset-0 flex flex-col justify-center px-8"
                   >
                     <div className="flex items-center gap-2">
                       <span
@@ -552,7 +528,7 @@ export default function Scrollytelling() {
                     key={activeStep}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
+exit={{ opacity: 0, y: -16 }}
                     transition={{ duration: 0.35, ease: 'easeInOut' }}
                     className="flex flex-col justify-center text-center py-4"
                   >
@@ -579,24 +555,38 @@ export default function Scrollytelling() {
               </div>
             </div>
 
-            {/* Visual — MOBILE: below text. DESKTOP: side-by-side */}
+            {/* Visual — MOBILE: below text. DESKTOP: side-by-side.
+                All four images stay mounted and cross-fade on the very same
+                opacities as their text, so the pair is always in sync. */}
             <div className="relative order-1 flex items-center justify-center lg:order-2">
-              <div className="relative h-[290px] w-full max-w-[390px] sm:h-[330px] sm:max-w-[420px] lg:h-[410px] lg:max-w-[460px]">
-                <AnimatePresence mode="wait">
+<div className="relative h-[380px] w-full max-w-[500px] sm:h-[460px] lg:h-[600px] lg:max-w-[620px]">
+                {STEPS.map((step, i) => (
                   <motion.div
-                    key={activeStep}
-                    initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -10, scale: 0.98 }}
-                    transition={{ duration: 0.35, ease: 'easeInOut' }}
-                    className="absolute inset-0"
+                    key={step.image}
+                    style={{ opacity: stepOpacities[i] }}
+                    aria-hidden={i !== activeStep}
+                    className="edge-fade-y pointer-events-none absolute inset-0 flex items-center justify-center"
                   >
-                    {activeStep === 0 && <StepDiscoverVisual progress={visualValues[0]} />}
-                    {activeStep === 1 && <StepBookVisual progress={visualValues[1]} />}
-                    {activeStep === 2 && <StepPayVisual progress={visualValues[2]} />}
-                    {activeStep === 3 && <StepManageVisual progress={visualValues[3]} />}
+                    <div className="edge-fade-x flex h-full w-full items-center justify-center">
+                      <img
+                        src={step.image}
+                        alt=""
+                        className="max-h-full w-auto object-contain"
+                      />
+                    </div>
                   </motion.div>
-                </AnimatePresence>
+                ))}
+                  >
+                    <div className="edge-fade-x flex h-full w-full items-center justify-center">
+                      <img
+                        src={step.image}
+                        alt={step.label}
+                        draggable={false}
+                        className="h-full w-full object-contain drop-shadow-2xl"
+                      />
+                    </div>
+                  </motion.div>
+                ))}
 
                 {/* Glow effect behind visual */}
                 <div className="pointer-events-none absolute -inset-8 rounded-full bg-brand-500/5 blur-3xl" />
