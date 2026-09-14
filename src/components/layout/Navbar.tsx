@@ -141,18 +141,17 @@ export default function Navbar({ solid }: { solid?: boolean }) {
   }, [location.hash])
 
   const scrolledSolid = solid || scrolled
-  const overlay = !scrolledSolid
 
   const langButtonClass = cn(
     'inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium transition',
-    overlay ? 'text-white/90 hover:bg-white/10 hover:text-white' : 'text-navy-700 hover:bg-navy-50',
+    'text-navy-700 hover:bg-navy-50',
   )
 
   const NavLink = ({ href, labelKey, section, markerId }: { href: string; labelKey: string; section?: string; markerId: string }) => {
     const label = t(labelKey)
     const isPageActive = href === '/search' ? location.pathname === '/search' : location.pathname === '/'
     const active = section ? activeSection === section : isPageActive
-    const baseClass = overlay ? 'text-white/60 hover:text-white' : 'text-navy-500 hover:text-navy-800'
+    const baseClass = 'text-navy-500 hover:text-navy-800'
 
     return (
       <a
@@ -177,7 +176,7 @@ export default function Navbar({ solid }: { solid?: boolean }) {
         }}
         className={cn(
           'group relative rounded-full px-4 py-2 text-sm font-medium transition-colors duration-300',
-          active && section ? (overlay ? 'text-white' : 'text-navy-800') : baseClass,
+          active && section ? 'text-navy-800' : baseClass,
         )}
         aria-current={active ? 'page' : undefined}
       >
@@ -260,12 +259,14 @@ export default function Navbar({ solid }: { solid?: boolean }) {
   return (
     <header
       className={cn(
-        'fixed inset-x-0 top-0 z-50 transition-all duration-300',
-        overlay ? 'glass-dark' : 'glass shadow-[0_8px_30px_rgb(11_45_99/0.08)]',
+        'fixed inset-x-0 top-0 z-50 transition-all duration-300 overflow-hidden',
+        'md:left-[10%] md:right-[10%] md:top-4 md:rounded-full md:inset-x-auto',
+        open ? 'rounded-none' : 'md:rounded-full',
+        'glass border border-slate-200/70 shadow-[0_8px_30px_rgb(11_45_99/0.08)]',
         scrolledSolid && 'shadow-md',
       )}
     >
-      <nav className="mx-auto flex h-[68px] max-w-7xl items-center justify-between px-4 sm:px-6">
+      <nav className="mx-auto flex h-[64px] items-center justify-between px-5 sm:px-7 md:rounded-full">
         <Link to="/" className="group flex items-center" aria-label="BoardEase home">
           <img
             src="/logo.png"
@@ -317,7 +318,7 @@ export default function Navbar({ solid }: { solid?: boolean }) {
         <button
           className={cn(
             'rounded-xl p-2 transition md:hidden',
-            overlay ? 'text-white hover:bg-white/10' : 'text-navy-800 hover:bg-navy-50',
+            'text-navy-800 hover:bg-navy-50',
           )}
           onClick={() => setOpen((o) => !o)}
           aria-label="Toggle menu"
@@ -335,14 +336,14 @@ export default function Navbar({ solid }: { solid?: boolean }) {
             transition={{ duration: 0.25, ease: 'easeInOut' }}
             className={cn(
               'overflow-hidden border-t md:hidden',
-              overlay ? 'glass-dark border-white/10' : 'glass border-white/50',
+              'bg-white/95 backdrop-blur-xl border-white/50',
             )}
           >
             <div className="flex flex-col gap-1 px-4 py-4">
               {navLinks.map((l) => (
                 <NavLink key={l.section ?? l.labelKey} href={l.href} labelKey={l.labelKey} section={l.section} markerId="mobile" />
               ))}
-              <div className={cn(overlay ? 'text-white' : 'text-navy-800')}>
+              <div className="text-navy-800">
                 <LangMenu mobile />
               </div>
               {user ? (

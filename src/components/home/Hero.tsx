@@ -37,13 +37,13 @@ export default function Hero() {
   }
 
   return (
-    <section className="relative overflow-hidden bg-gradient-to-br from-navy-950 via-navy-800 to-brand-700 pb-24 pt-32 text-white sm:pb-32">
-      <div className="hero-blob -top-20 left-1/4 h-96 w-96 bg-brand-500" />
-      <div className="hero-blob right-10 top-40 h-80 w-80 bg-mint-400" />
+    <section className="relative overflow-hidden bg-gradient-to-b from-brand-50 via-white to-white pb-24 pt-32 text-navy-900 sm:pb-32">
+      <div className="hero-blob -top-20 left-1/4 h-96 w-96 bg-brand-300" />
+      <div className="hero-blob right-10 top-40 h-80 w-80 bg-mint-300" />
 
       <div className="relative mx-auto grid max-w-7xl items-center gap-14 px-4 sm:px-6 lg:grid-cols-[1.1fr_0.9fr]">
         <motion.div initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease: 'easeOut' }}>
-          <span className="glass-dark inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold text-mint-300">
+          <span className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-4 py-1.5 text-xs font-semibold text-brand-700 ring-1 ring-brand-100">
             <Sparkles size={14} />
             {t('hero.badge')}
           </span>
@@ -51,7 +51,7 @@ export default function Hero() {
             {t('hero.titleBefore')}{' '}
             <span className="text-gradient">{t('hero.titleHighlight')}</span> {t('hero.titleAfter')}
           </h1>
-          <p className="mt-5 max-w-xl text-[16px] leading-relaxed text-navy-100/85">{t('hero.subtitle')}</p>
+          <p className="mt-5 max-w-xl text-[16px] leading-relaxed text-ink">{t('hero.subtitle')}</p>
 
           <div className="mt-8 flex flex-wrap items-center gap-4">
             <a
@@ -62,7 +62,7 @@ export default function Hero() {
             </a>
             <a
               href="#featured"
-              className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-7 py-3.5 text-sm font-semibold text-white backdrop-blur transition hover:border-white/40 hover:bg-white/10"
+              className="inline-flex items-center gap-2 rounded-full border border-navy-200 bg-white px-7 py-3.5 text-sm font-semibold text-navy-800 transition hover:border-navy-300 hover:bg-navy-50"
             >
               {t('hero.exploreListings')}
             </a>
@@ -75,8 +75,8 @@ export default function Hero() {
               { value: '500+', label: t('hero.statBoarders') },
             ].map((s) => (
               <div key={s.label}>
-                <p className="text-2xl font-bold text-white">{s.value}</p>
-                <p className="text-xs font-medium text-navy-200">{s.label}</p>
+                <p className="text-2xl font-bold text-navy-900">{s.value}</p>
+                <p className="text-xs font-medium text-ink">{s.label}</p>
               </div>
             ))}
           </div>
@@ -171,13 +171,13 @@ export default function Hero() {
             <Search size={17} /> {t('hero.search')}
           </button>
         </form>
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs text-navy-200">
-          <span className="font-medium text-navy-100/70">{t('hero.popular')}</span>
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs text-ink">
+          <span className="font-medium text-mut">{t('hero.popular')}</span>
           {['WiFi', 'Aircon', 'Female only', 'Near SSC', 'Studio'].map((chip) => (
             <button
               key={chip}
               onClick={() => navigate(`/search?q=${encodeURIComponent(chip)}`)}
-              className="glass-dark rounded-full px-3 py-1.5 font-medium transition hover:border-mint-400/40 hover:text-mint-300"
+              className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-medium text-navy-700 transition hover:border-brand-300 hover:text-brand-600"
             >
               {chip}
             </button>

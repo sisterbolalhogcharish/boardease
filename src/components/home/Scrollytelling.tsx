@@ -86,16 +86,22 @@ export default function Scrollytelling() {
   })
 
   return (
-    <section id="how-it-works" className="relative bg-navy-950 text-white">
+    <section id="how-it-works" className="relative bg-gradient-to-b from-white via-brand-50/60 to-white text-navy-900">
+      {/* Blurry bubble effects */}
+      <div className="hero-blob -left-24 top-24 h-80 w-80 bg-brand-200" />
+      <div className="hero-blob -right-16 top-1/3 h-72 w-72 bg-mint-200" />
+      <div className="hero-blob left-1/3 bottom-10 h-64 w-64 bg-mint-100" />
+
       {/* Section header */}
       <div className="relative z-10 mx-auto max-w-7xl px-4 pt-24 pb-8 sm:px-6">
         <div className="text-center">
-          <span className="inline-flex items-center gap-2 rounded-full bg-white/5 px-4 py-1.5 text-xs font-semibold text-mint-300 ring-1 ring-white/10">                <Sparkles size={14} /> The BoardEase experience
+          <span className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-4 py-1.5 text-xs font-semibold text-brand-700 ring-1 ring-brand-100">
+            <Sparkles size={14} /> The BoardEase experience
           </span>
-          <h2 className="mt-5 text-3xl font-extrabold tracking-tight text-white sm:text-4xl lg:text-5xl">
+          <h2 className="mt-5 text-3xl font-extrabold tracking-tight text-navy-900 sm:text-4xl lg:text-5xl">
             How BoardEase Works
           </h2>
-          <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed text-navy-200">
+          <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed text-ink">
             Three roles. One platform. A seamless experience for boarders, students, and landlords.
           </p>
         </div>
@@ -129,7 +135,7 @@ export default function Scrollytelling() {
                         {step.label}
                       </span>
                     </div>
-                    <h3 className="mt-5 text-2xl font-extrabold leading-tight tracking-tight text-white sm:text-3xl lg:text-4xl">
+                    <h3 className="mt-5 text-2xl font-extrabold leading-tight tracking-tight text-navy-900 sm:text-3xl lg:text-4xl">
                       {step.title}
                     </h3>
                     <div className="mt-6 flex items-center gap-3">
@@ -162,7 +168,7 @@ export default function Scrollytelling() {
                         {STEPS[activeStep].label}
                       </span>
                     </div>
-                    <h3 className="mt-3 text-xl font-extrabold leading-tight tracking-tight text-white">
+                    <h3 className="mt-3 text-xl font-extrabold leading-tight tracking-tight text-navy-900">
                       {STEPS[activeStep].title}
                     </h3>
                     <div className="mt-4 flex items-center justify-center gap-2">
@@ -185,21 +191,34 @@ export default function Scrollytelling() {
                     key={step.image}
                     style={{ opacity: stepOpacities[i] }}
                     aria-hidden={i !== activeStep}
-                    className="edge-fade-y pointer-events-none absolute inset-0 flex items-center justify-center"
+                    className="pointer-events-none absolute inset-0 flex items-center justify-center"
                   >
-                    <div className="edge-fade-x flex h-full w-full items-center justify-center">
+                    <div
+                      className="h-full w-full"
+                      style={
+                        i === 0
+                          ? {
+                              WebkitMaskImage:
+                                'linear-gradient(to right, transparent, #000 20%), linear-gradient(to top, transparent, #000 20%)',
+                              WebkitMaskComposite: 'intersect' as const,
+                              maskImage:
+                                'linear-gradient(to right, transparent, #000 20%), linear-gradient(to top, transparent, #000 20%)',
+                              maskComposite: 'intersect' as const,
+                            }
+                          : undefined
+                      }
+                    >
                       <img
                         src={step.image}
                         alt={step.label}
                         draggable={false}
-                        className="h-full w-full object-contain drop-shadow-2xl"
+                        className="h-full w-full object-contain"
                       />
                     </div>
                   </motion.div>
                 ))}
 
-                {/* Glow effect behind visual */}
-                <div className="pointer-events-none absolute -inset-10 rounded-full bg-brand-500/5 blur-3xl" />
+
               </div>
             </div>
           </div>
@@ -207,7 +226,7 @@ export default function Scrollytelling() {
       </div>
 
       {/* Bottom decorative gradient */}
-      <div className="h-12 bg-gradient-to-b from-navy-950 to-white" />
+      <div className="h-12 bg-gradient-to-b from-brand-50/60 to-white" />
     </section>
   )
 }

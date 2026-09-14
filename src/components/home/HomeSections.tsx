@@ -211,14 +211,16 @@ export function StatsBenefits() {
         </div>
       </div>
 
-      <div className="mt-24 grid gap-5 rounded-[24px] bg-gradient-to-r from-navy-900 to-navy-800 p-10 shadow-card-hover sm:grid-cols-2 lg:grid-cols-4">
+      <div className="relative mt-24 grid gap-5 overflow-hidden rounded-[24px] border border-slate-100 bg-white p-10 shadow-card-hover sm:grid-cols-2 lg:grid-cols-4">
+        <div className="hero-blob -left-16 -top-16 h-56 w-56 bg-brand-200" />
+        <div className="hero-blob -bottom-16 -right-10 h-56 w-56 bg-mint-200" />
         {STAT_DEFS.map((s, i) => (
           <Reveal key={s.labelKey} delay={i * 0.07}>
-            <div className="text-center">
-              <p className="text-4xl font-extrabold text-white">
+            <div className="relative text-center">
+              <p className="text-4xl font-extrabold text-navy-800">
                 {s.value}{s.suffix}
               </p>
-              <p className="mt-2 text-sm font-medium text-navy-200">{t(s.labelKey)}</p>
+              <p className="mt-2 text-sm font-medium text-ink">{t(s.labelKey)}</p>
             </div>
           </Reveal>
         ))}
@@ -466,17 +468,17 @@ export function CTA() {
   return (
     <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
       <Reveal>
-        <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-navy-900 via-navy-800 to-brand-700 px-6 py-16 text-center shadow-card-hover sm:px-16">
-          <div className="hero-blob -right-10 -top-10 h-64 w-64 bg-mint-400" />
-          <div className="hero-blob -bottom-16 left-10 h-64 w-64 bg-brand-500" />
+        <div className="relative overflow-hidden rounded-[28px] border border-slate-100 bg-gradient-to-br from-brand-50 via-white to-mint-50 px-6 py-16 text-center shadow-card-hover sm:px-16">
+          <div className="hero-blob -right-10 -top-10 h-64 w-64 bg-mint-300" />
+          <div className="hero-blob -bottom-16 left-10 h-64 w-64 bg-brand-300" />
           <div className="relative">
-            <span className="glass-dark inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold text-mint-300">
+            <span className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-4 py-1.5 text-xs font-semibold text-brand-700 ring-1 ring-brand-100">
               <Sparkles size={14} /> {t('cta.badge')}
             </span>
-            <h2 className="mx-auto mt-5 max-w-2xl text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+            <h2 className="mx-auto mt-5 max-w-2xl text-3xl font-extrabold tracking-tight text-navy-900 sm:text-4xl">
               {t('cta.title')}
             </h2>
-            <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed text-navy-100/85">
+            <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed text-ink">
               {t('cta.subtitle')}
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
@@ -488,7 +490,7 @@ export function CTA() {
               </Link>
               <Link
                 to="/login"
-                className="rounded-full border border-white/20 bg-white/5 px-7 py-3.5 text-sm font-semibold text-white backdrop-blur transition hover:border-white/40 hover:bg-white/10"
+                className="rounded-full border border-navy-200 bg-white px-7 py-3.5 text-sm font-semibold text-navy-800 transition hover:border-navy-300 hover:bg-navy-50"
               >
                 {t('cta.dashboard')}
               </Link>
