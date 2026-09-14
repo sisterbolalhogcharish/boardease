@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Building2, MapPin, Search, Sparkles } from 'lucide-react'
+import { Building2, MapPin, Search, Sparkles, Star } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLanguage } from '../../lib/i18n'
@@ -56,9 +56,23 @@ export default function Hero() {
           <div className="mt-8 flex flex-wrap items-center gap-4">
             <a
               href="#search"
-              className="inline-flex items-center gap-2 rounded-full bg-brand-500 px-7 py-3.5 text-sm font-semibold text-white shadow-[0_12px_32px_rgb(30_115_232/0.45)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-brand-400"
+              className="group relative inline-flex items-center gap-2 overflow-hidden rounded-full bg-brand-500 px-7 py-3.5 text-sm font-semibold text-white shadow-[0_12px_32px_rgb(30_115_232/0.45)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-brand-400"
             >
               <Search size={17} /> {t('hero.searchNow')}
+              {/* Premium wave shine effect — left to right shimmer */}
+              <motion.span
+                className="absolute inset-0 pointer-events-none"
+                style={{
+                  background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.18) 50%, transparent 60%)',
+                }}
+                animate={{ x: ['-100%', '200%'] }}
+                transition={{
+                  duration: 2.5,
+                  repeat: Infinity,
+                  repeatDelay: 3,
+                  ease: 'easeInOut',
+                }}
+              />
             </a>
             <a
               href="#featured"

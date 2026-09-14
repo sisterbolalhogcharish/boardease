@@ -58,12 +58,11 @@
 /* ---------- Base ---------- */
 html {
   scroll-behavior: smooth;
-  overflow-x: hidden;
 }
 
 body {
   margin: 0;
-  overflow-x: hidden;
+  overflow-x: clip;
   background-color: var(--color-surface);
   color: var(--color-navy-800);
   font-family: var(--font-sans);
