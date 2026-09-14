@@ -18,7 +18,7 @@ import ProfileMenu from '../../components/boarder/ProfileMenu'
 import { Avatar } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
 import { useCompare } from '../../lib/compare'
-import { useConversations, useFavorites, useReservations } from '../../lib/hooks'
+import { useConversations, useFavorites, useReservations, useUnviewedFavorites } from '../../lib/hooks'
 import { cn } from '../../lib/utils'
 
 interface NavItem {
@@ -39,6 +39,7 @@ export default function BoarderDashboardLayout() {
   const { data: favorites } = useFavorites(userId)
   const { data: conversations } = useConversations(userId)
   const { data: reservations } = useReservations(userId)
+  const { data: unviewedFavorites } = useUnviewedFavorites(userId)
 
   const unreadMessages = (conversations ?? []).reduce((sum, c) => sum + c.unreadCount, 0)
   const pendingReservations = (reservations ?? []).filter((r) => r.status === 'pending').length
@@ -46,7 +47,7 @@ export default function BoarderDashboardLayout() {
   const NAV: NavItem[] = [
     { path: '/boarder', label: 'My Home', icon: Home, end: true },
     { path: '/boarder/browse', label: 'Browse Houses', icon: Building2 },
-    { path: '/boarder/favorites', label: 'Favorites', icon: Heart, badge: favorites?.length },
+    { path: '/boarder/favorites', label: 'Favorites', icon: Heart, badge: unviewedFavorites?.count || undefined },
     { path: '/boarder/compare', label: 'Compare', icon: ArrowLeftRight, badge: compare.count || undefined },
     { path: '/boarder/reservations', label: 'My Reservations', icon: CalendarClock, badge: pendingReservations || undefined },
     { path: '/boarder/payments', label: 'My Payments', icon: CreditCard },
@@ -58,7 +59,7 @@ export default function BoarderDashboardLayout() {
   const closeMenu = () => setMobileOpen(false)
 
   const Sidebar = (
-    <div className="flex h-full flex-col bg-navy-900">
+    <div className="flex h-full flex-col border-r border-slate-200/70 bg-gradient-to-b from-brand-50 via-white to-white">
       <div className="px-6 pb-2 pt-6">
         <Link to="/" className="inline-flex" aria-label="BoardEase home">
           <img
@@ -69,7 +70,7 @@ export default function BoarderDashboardLayout() {
             draggable={false}
           />
         </Link>
-        <p className="mt-2 text-[10px] font-semibold tracking-wide text-navy-300 uppercase">Boarder Portal</p>
+        <p className="mt-2 text-[10px] font-semibold tracking-wide text-mut uppercase">Boarder Portal</p>
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2" aria-label="Boarder navigation">
@@ -84,24 +85,24 @@ export default function BoarderDashboardLayout() {
               className={cn(
                 'group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200',
                 active
-                  ? 'bg-gradient-to-r from-emerald-400 to-teal-400 text-navy-950 shadow-[0_8px_20px_rgb(51_199_165/0.55)] ring-1 ring-white/20'
-                  : 'text-navy-200 hover:bg-white/5 hover:text-white',
+                  ? 'bg-gradient-to-r from-brand-500 to-mint-400 text-white shadow-[0_8px_20px_rgb(30_115_232/0.35)] ring-1 ring-brand-500/30'
+                  : 'text-navy-700 hover:bg-navy-50 hover:text-navy-900',
               )}
             >
               {active ? (
-                <item.icon size={18} className="text-navy-950" />
+                <item.icon size={18} className="text-white" />
               ) : (
-                <item.icon size={18} className="text-navy-300 group-hover:text-mint-300" />
+                <item.icon size={18} className="text-navy-400 group-hover:text-brand-600" />
               )}
               <span className="flex-1">{item.label}</span>
               {item.badge ? (
                 <span
                   className={cn(
                     'flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold',
-                    active ? 'bg-navy-900/40 text-navy-50 ring-1 ring-white/20' : 'bg-mint-400/20 text-mint-300',
+                    active ? 'bg-white/25 text-white ring-1 ring-white/30' : 'bg-mint-100 text-mint-700',
                   )}
                 >
-                  {item.badge > 9 ? '9+' : item.badge}
+                  {item.badge > 99 ? '99+' : item.badge}
                 </span>
               ) : null}
             </Link>
@@ -109,8 +110,8 @@ export default function BoarderDashboardLayout() {
         })}
       </nav>
 
-      <div className="border-t border-white/10 p-4">
-        <div className="flex items-center gap-3 rounded-xl bg-white/[0.04] p-3 ring-1 ring-white/5">
+      <div className="border-t border-slate-200/70 p-4">
+        <div className="flex items-center gap-3 rounded-xl bg-brand-50/70 p-3 ring-1 ring-brand-100">
           <Avatar
             src={user?.avatarUrl}
             name={user?.name}
@@ -119,8 +120,8 @@ export default function BoarderDashboardLayout() {
             rounded="full"
           />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-bold text-white">{user?.name}</p>
-            <p className="truncate text-[11px] text-navy-300">{user?.email}</p>
+            <p className="truncate text-sm font-bold text-navy-800">{user?.name}</p>
+            <p className="truncate text-[11px] text-navy-400">{user?.email}</p>
           </div>
         </div>
       </div>

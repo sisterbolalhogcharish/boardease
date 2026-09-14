@@ -437,7 +437,7 @@ export default function HouseDetails() {
                   >
                     <MessageCircle size={16} /> Contact Owner
                   </button>
-                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.15fr_1fr]">
                     <FavoriteButton houseId={house.id} variant="button" />
                     <CompareButton houseId={house.id} variant="button" />
                   </div>

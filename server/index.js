@@ -1311,6 +1311,46 @@ app.delete('/api/favorites/:houseId', async (req, res) => {
   }
 })
 
+/* How many favorites were added after the boarder last opened the Favorites
+   page — powers the "Favorites [n]" sidebar badge. Only reads data; marking
+   viewed never touches the favorites themselves. */
+app.get('/api/favorites/unviewed-count', async (req, res) => {
+  try {
+    const { userId } = req.query
+    if (!userId) return res.status(400).json({ error: 'userId is required' })
+    const [rows] = await pool.query(
+      `SELECT COUNT(*) AS n
+         FROM favorites f
+         LEFT JOIN favorite_views v ON v.user_id = f.user_id
+        WHERE f.user_id = ?
+          AND f.created_at > COALESCE(v.last_viewed_at, '1970-01-01')`,
+      [userId]
+    )
+    res.json({ count: Number(rows[0]?.n || 0) })
+  } catch (err) {
+    console.error('Favorites unviewed count error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+/* Stamp "the boarder just opened their Favorites" — clears the badge without
+   removing any favorite. Upsert keeps a single row per user. */
+app.post('/api/favorites/mark-viewed', async (req, res) => {
+  try {
+    const { userId } = req.body
+    if (!userId) return res.status(400).json({ error: 'userId is required' })
+    await pool.query(
+      `INSERT INTO favorite_views (user_id, last_viewed_at) VALUES (?, CURRENT_TIMESTAMP)
+       ON DUPLICATE KEY UPDATE last_viewed_at = CURRENT_TIMESTAMP`,
+      [userId]
+    )
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('Mark favorites viewed error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
 /* ================================================================
    RESERVATIONS  (request -> owner approve / decline)
    ================================================================ */
@@ -1802,6 +1842,19 @@ async function ensureSchema() {
     }
   } catch (err) {
     console.warn('Schema check skipped:', err.message)
+  }
+
+  try {
+    /* Boarder "Favorites [n]" badge: remembers when each boarder last opened
+       the Favorites page so only genuinely new favorites count as unviewed. */
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS favorite_views (
+        user_id int(11) NOT NULL PRIMARY KEY,
+        last_viewed_at timestamp NOT NULL DEFAULT current_timestamp()
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `)
+  } catch (err) {
+    console.warn('favorite_views schema check skipped:', err.message)
   }
 
   try {

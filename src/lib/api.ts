@@ -578,6 +578,18 @@ export async function removeFavorite(userId: string, houseId: string): Promise<{
   return fetchJSON<{ ok: boolean }>(`/favorites/${houseId}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' })
 }
 
+/** Favorites added since the boarder last opened the Favorites page — powers
+ *  the sidebar badge. Returns 0 once everything has been viewed. */
+export async function getUnviewedFavoritesCount(userId: string): Promise<{ count: number }> {
+  return fetchJSON<{ count: number }>(`/favorites/unviewed-count?userId=${encodeURIComponent(userId)}`)
+}
+
+/** Stamp "the boarder just opened Favorites" — clears the badge only; saved
+ *  favorites are never touched. */
+export async function markFavoritesViewed(userId: string): Promise<{ ok: boolean }> {
+  return fetchJSON<{ ok: boolean }>('/favorites/mark-viewed', { method: 'POST', body: JSON.stringify({ userId }) })
+}
+
 /* ------------------------------------------------------------------ */
 /*  Boarder — public rooms                                             */
 /* ------------------------------------------------------------------ */

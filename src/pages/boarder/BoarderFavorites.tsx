@@ -1,15 +1,30 @@
+import { useEffect, useRef } from 'react'
 import { Heart, ListChecks } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import HouseCard from '../../components/HouseCard'
 import { EmptyState, Skeleton } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
 import { useCompare } from '../../lib/compare'
-import { useFavorites } from '../../lib/hooks'
+import { useFavorites, useMarkFavoritesViewed } from '../../lib/hooks'
 
 export default function BoarderFavorites() {
   const { user } = useAuth()
-  const { data: favorites, isLoading } = useFavorites(user?.id?.toString())
+  const userId = user?.id?.toString()
+  const { data: favorites, isLoading } = useFavorites(userId)
   const compare = useCompare()
+  const markViewed = useMarkFavoritesViewed()
+
+  /* Opening the Favorites page counts as viewing the new items: clear the
+     sidebar badge once the list has actually loaded. The stamp is idempotent
+     (a server upsert), the ref guard just avoids repeat calls on re-renders.
+     It only touches view-tracking — saved favorites are never removed. */
+  const markedViewedRef = useRef(false)
+  useEffect(() => {
+    if (!userId || isLoading || markedViewedRef.current) return
+    markedViewedRef.current = true
+    markViewed.mutate(userId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, isLoading])
 
   if (isLoading) {
     return (

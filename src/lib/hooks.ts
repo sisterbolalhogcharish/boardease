@@ -105,6 +105,25 @@ export function useFavorites(userId?: string) {
   })
 }
 
+/** Unviewed-favorites count for the sidebar "Favorites [n]" badge. */
+export function useUnviewedFavorites(userId?: string) {
+  return useQuery({
+    queryKey: ['favorites-unviewed', userId],
+    queryFn: () => api.getUnviewedFavoritesCount(userId!),
+    enabled: !!userId,
+  })
+}
+
+/** Called when the boarder opens the Favorites page — clears the badge
+ *  without touching the saved favorites themselves. */
+export function useMarkFavoritesViewed() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (userId: string) => api.markFavoritesViewed(userId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['favorites-unviewed'] }),
+  })
+}
+
 export function usePublicRooms(houseId?: string) {
   return useQuery({
     queryKey: ['public-rooms', houseId],
@@ -273,6 +292,7 @@ export function useToggleFavorite(userId?: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['favorites', userId] })
       qc.invalidateQueries({ queryKey: ['favorites'] })
+      qc.invalidateQueries({ queryKey: ['favorites-unviewed'] })
     },
   })
 }

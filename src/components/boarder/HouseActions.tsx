@@ -95,15 +95,17 @@ export function FavoriteButton({
         disabled={toggle.isPending}
         aria-pressed={favorited}
         className={cn(
-          'flex w-full items-center justify-center gap-2 rounded-xl border py-3 text-sm font-semibold transition disabled:opacity-60',
+          /* Fixed h-11 + nowrap keep the button identical in both states —
+             toggling never resizes it or shifts the card. */
+          'flex h-11 w-full min-w-0 items-center justify-center gap-1.5 rounded-xl border px-2 text-xs font-semibold whitespace-nowrap transition-colors disabled:opacity-60',
           favorited
             ? 'border-danger/30 bg-red-50 text-danger hover:bg-red-100'
             : 'border-slate-200 text-navy-800 hover:border-danger/40 hover:text-danger',
           className,
         )}
       >
-        <Heart size={16} className={favorited ? 'fill-danger text-danger' : ''} />
-        {favorited ? 'Saved to favorites' : 'Save to favorites'}
+        <Heart size={14} className={cn('shrink-0', favorited && 'fill-danger text-danger')} />
+        <span className="truncate">{favorited ? 'Saved to favorites' : 'Save to favorites'}</span>
       </button>
     )
   }
@@ -165,15 +167,17 @@ export function CompareButton({
         onClick={handleClick}
         aria-pressed={selected}
         className={cn(
-          'flex w-full items-center justify-center gap-2 rounded-xl border py-3 text-sm font-semibold transition',
+          /* Same fixed h-11 box as the favorites button so the pair stays
+             perfectly level, active or not. */
+          'flex h-11 w-full min-w-0 items-center justify-center gap-1.5 rounded-xl border px-2 text-xs font-semibold whitespace-nowrap transition-colors',
           selected
             ? 'border-navy-800 bg-navy-800 text-white hover:bg-navy-700'
             : 'border-slate-200 text-navy-800 hover:border-navy-400',
           className,
         )}
       >
-        {selected ? <Check size={16} /> : <ArrowLeftRight size={16} />}
-        {selected ? 'In comparison' : 'Compare'}
+        {selected ? <Check size={14} className="shrink-0" /> : <ArrowLeftRight size={14} className="shrink-0" />}
+        <span className="truncate">{selected ? 'Added to compare' : 'Compare'}</span>
       </button>
     )
   }
