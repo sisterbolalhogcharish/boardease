@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, ChevronDown, Globe, LogIn, LogOut, Menu, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { useLanguage, type LangCode } from '../../lib/i18n'
 import { cn } from '../../lib/utils'
@@ -14,6 +14,7 @@ export default function Navbar({ solid }: { solid?: boolean }) {
   const { user, logout } = useAuth()
   const { lang, setLang, t, languages } = useLanguage()
   const location = useLocation()
+  const navigate = useNavigate()
   const langRef = useRef<HTMLDivElement>(null)
 
   const navLinkMeta: Array<{ href: string; section?: string; labelKey: string }> = navigationSections.map((s) => {
@@ -134,11 +135,16 @@ export default function Navbar({ solid }: { solid?: boolean }) {
   useEffect(() => {
     if (!location.hash) return
     const id = location.hash.slice(1)
-    const el = document.getElementById(id)
-    if (!el) return
-    const top = el.getBoundingClientRect().top + window.scrollY - 88
-    window.scrollTo({ top, behavior: 'smooth' })
-  }, [location.hash])
+    // Wait a frame so freshly-rendered landing sections exist in the DOM
+    // before we try to measure their position.
+    const raf = requestAnimationFrame(() => {
+      const el = document.getElementById(id)
+      if (!el) return
+      const top = el.getBoundingClientRect().top + window.scrollY - 88
+      window.scrollTo({ top, behavior: 'smooth' })
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [location.hash, location.pathname])
 
   const scrolledSolid = solid || scrolled
 
@@ -146,6 +152,19 @@ export default function Navbar({ solid }: { solid?: boolean }) {
     'inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium transition',
     'text-navy-700 hover:bg-navy-50',
   )
+
+  const scrollToSection = (section: string) => {
+    const el = document.getElementById(section)
+    if (el) {
+      const top = el.getBoundingClientRect().top + window.scrollY - 88
+      window.scrollTo({ top, behavior: 'smooth' })
+      return
+    }
+    // Section isn't on this page (e.g. we're on /houses/1 or /search):
+    // let React Router take us to the landing page and let the hash
+    // effect above do the smooth scroll once the section has rendered.
+    navigate(`/#${section}`)
+  }
 
   const NavLink = ({ href, labelKey, section, markerId }: { href: string; labelKey: string; section?: string; markerId: string }) => {
     const label = t(labelKey)
@@ -155,18 +174,13 @@ export default function Navbar({ solid }: { solid?: boolean }) {
 
     return (
       <a
-        href={section ? `#${section === 'explore' ? 'hero' : section}` : href}
+        href={section ? `#${section}` : href}
         onClick={(e) => {
           e.preventDefault()
           setOpen(false)
 
           if (section) {
-            const targetId = section === 'explore' ? 'hero' : section
-            const el = document.getElementById(targetId)
-            if (el) {
-              const top = el.getBoundingClientRect().top + window.scrollY - 88
-              window.scrollTo({ top, behavior: 'smooth' })
-            }
+            scrollToSection(section)
             return
           }
 

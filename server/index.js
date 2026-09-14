@@ -324,6 +324,11 @@ app.get('/api/houses', async (req, res) => {
       onlyAvailable, minRating, wifi, aircon, kitchen,
       laundry, parking, petFriendly, curfew, sort
     } = req.query
+    // Room-type filter arrives as one or more `roomType` params (e.g. from
+    // the landing page's Categories or the Hero quick-search).
+    const roomTypes = req.query.roomType
+      ? (Array.isArray(req.query.roomType) ? req.query.roomType : [req.query.roomType])
+      : []
 
     let sql = `
       SELECT bh.*, l.business_name AS owner_name, l.verified AS owner_verified,
@@ -365,6 +370,13 @@ app.get('/api/houses', async (req, res) => {
     }
     if (maxRent) { sql += ' AND bh.monthly_rent <= ?'; params.push(parseInt(maxRent)) }
     if (gender) { sql += ' AND (bh.gender = ? OR bh.gender = "mixed")'; params.push(gender) }
+    if (roomTypes.length > 0) {
+      sql += ` AND EXISTS (
+        SELECT 1 FROM rooms rt
+        WHERE rt.house_id = bh.id AND rt.type IN (${roomTypes.map(() => '?').join(', ')})
+      )`
+      params.push(...roomTypes)
+    }
     if (onlyAvailable === 'true') {
       sql += ' AND (bh.total_rooms - bh.occupied_rooms) > 0'
     }

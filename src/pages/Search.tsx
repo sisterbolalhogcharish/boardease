@@ -74,21 +74,35 @@ const SORTS: { value: SortKey; label: string }[] = [
 export default function Search() {
   const [params] = useSearchParams()
   const quick = useMemo(() => parseQuickQuery(params.get('q')), [params])
+  // Explicit filter params (used by the landing page's Categories cards and
+  // Hero quick-search) — e.g. /search?roomType=bedspace&gender=female
+  const roomParam = useMemo(
+    () => params.getAll('roomType').filter((rt): rt is RoomType => ROOM_TYPES.includes(rt as RoomType)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
+  const genderParam = params.get('gender')
+  const amenityParam = (key: string) => params.get(key) === 'true'
   const [municipality, setMunicipality] = useState<string | undefined>(params.get('municipality') ?? undefined)
   const [barangay, setBarangay] = useState<string | undefined>(undefined)
-  const [school, setSchool] = useState<string | undefined>(undefined)
+  const [school, setSchool] = useState<string | undefined>(params.get('school') ?? undefined)
   const [maxRent, setMaxRent] = useState<number | undefined>(params.get('maxRent') ? Number(params.get('maxRent')) : undefined)
   const [roomTypes, setRoomTypes] = useState<RoomType[]>(
-    quick.roomTypes.length
-      ? quick.roomTypes
-      : params.get('roomType') && ROOM_TYPES.includes(params.get('roomType') as RoomType)
-        ? [params.get('roomType') as RoomType]
-        : [],
+    roomParam.length ? roomParam : quick.roomTypes,
   )
-  const [gender, setGender] = useState<Gender | undefined>(quick.gender)
+  const [gender, setGender] = useState<Gender | undefined>(
+    GENDERS.some((g) => g.value === genderParam) ? (genderParam as Gender) : quick.gender,
+  )
   const [onlyAvailable, setOnlyAvailable] = useState(false)
-  const [minRating, setMinRating] = useState<number | undefined>(undefined)
-  const [amenities, setAmenities] = useState<SearchFilters['amenities']>(quick.amenities)
+  const [minRating, setMinRating] = useState<number | undefined>(
+    params.get('minRating') ? Number(params.get('minRating')) : undefined,
+  )
+  const [amenities, setAmenities] = useState<SearchFilters['amenities']>({
+    ...quick.amenities,
+    wifi: quick.amenities.wifi || amenityParam('wifi'),
+    aircon: quick.amenities.aircon || amenityParam('aircon'),
+    parking: quick.amenities.parking || amenityParam('parking'),
+  })
   const [sort, setSort] = useState<SortKey>('recommended')
   const [drawer, setDrawer] = useState(false)
   const { data: locations } = useLocations()

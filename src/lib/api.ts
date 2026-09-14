@@ -85,6 +85,7 @@ export async function getHouses(filters?: SearchFilters, sort: SortKey = 'recomm
     if (filters.school) params.set('school', filters.school)
     if (filters.maxRent) params.set('maxRent', String(filters.maxRent))
     if (filters.gender) params.set('gender', filters.gender)
+    filters.roomTypes.forEach((rt) => params.append('roomType', rt))
     if (filters.onlyAvailable) params.set('onlyAvailable', 'true')
     if (filters.minRating) params.set('minRating', String(filters.minRating))
     if (filters.amenities.wifi) params.set('wifi', 'true')
