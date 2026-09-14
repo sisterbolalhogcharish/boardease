@@ -164,7 +164,7 @@ export default function BoarderDashboardLayout() {
       <div className="flex min-w-0 flex-1 flex-col lg:pl-64">
         {/* Topbar */}
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-slate-200/70 bg-white/80 px-4 backdrop-blur sm:px-6">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <button
               className="rounded-xl p-2 text-navy-800 transition hover:bg-navy-50 lg:hidden"
               onClick={() => setMobileOpen(true)}
@@ -172,8 +172,8 @@ export default function BoarderDashboardLayout() {
             >
               <Menu size={20} />
             </button>
-            <div>
-              <h1 className="text-lg font-bold tracking-tight text-navy-800">{current.label}</h1>
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-bold tracking-tight text-navy-800">{current.label}</h1>
               <p className="hidden text-xs text-mut sm:block">
                 Welcome back, {user?.name?.split(' ')[0]}
               </p>

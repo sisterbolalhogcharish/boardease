@@ -23,8 +23,9 @@ export default function Navbar({ solid }: { solid?: boolean }) {
     let labelKey: string
 
     if (s.id === 'explore') {
-      href = '/'
-      section = 'featured'
+      // "Explore" goes to the existing browse page — real filtering, all
+      // listings, photos, rates, availability, and house details.
+      href = '/search'
       labelKey = 'nav.explore'
     } else {
       href = '/'
@@ -158,6 +159,9 @@ export default function Navbar({ solid }: { solid?: boolean }) {
     if (el) {
       const top = el.getBoundingClientRect().top + window.scrollY - 88
       window.scrollTo({ top, behavior: 'smooth' })
+      // Keep the URL in sync (so refresh lands on the same section) without
+      // adding a history entry or re-triggering the scroll effect.
+      window.history.replaceState(null, '', `/#${section}`)
       return
     }
     // Section isn't on this page (e.g. we're on /houses/1 or /search):
@@ -184,13 +188,13 @@ export default function Navbar({ solid }: { solid?: boolean }) {
             return
           }
 
-          if (href !== '/') {
-            window.location.href = href
-          }
+          // Page link (e.g. /search, /login): SPA navigation — no full reload,
+          // back button works, and the URL updates.
+          navigate(href)
         }}
         className={cn(
           'group relative rounded-full px-4 py-2 text-sm font-medium transition-colors duration-300',
-          active && section ? 'text-navy-800' : baseClass,
+          active ? 'text-navy-800' : baseClass,
         )}
         aria-current={active ? 'page' : undefined}
       >

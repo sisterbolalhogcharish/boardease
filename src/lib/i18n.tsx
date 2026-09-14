@@ -89,6 +89,8 @@ const en: Dict = {
   'categories.parkingDesc': 'Safe space for your ride',
   'categories.gcash': 'Pay via GCash',
   'categories.gcashDesc': 'Digital receipts & records',
+  'categories.mixed': 'Mixed Housing',
+  'categories.mixedDesc': 'Open to all boarders',
 
   'stats.eyebrow': 'Why BoardEase',
   'stats.title': 'Everything Landlords Need to Run Their Boarding House',
@@ -235,6 +237,8 @@ const fil: Dict = {
   'categories.parkingDesc': 'Ligtas na espasyo para sa sasakyan',
   'categories.gcash': 'Bayad via GCash',
   'categories.gcashDesc': 'Digital na resibo at record',
+  'categories.mixed': 'Mixed na Tirahan',
+  'categories.mixedDesc': 'Bukas sa lahat ng boarder',
 
   'stats.eyebrow': 'Bakit BoardEase',
   'stats.title': 'Lahat ng Kailangan ng Landlord para Patakbuhin ang Boarding House',
@@ -381,6 +385,8 @@ const ceb: Dict = {
   'categories.parkingDesc': 'Luwas nga luna para sa imong sakyanan',
   'categories.gcash': 'Bayad via GCash',
   'categories.gcashDesc': 'Digital nga resibo ug records',
+  'categories.mixed': 'Mixed nga Puluy-anan',
+  'categories.mixedDesc': 'Abli sa tanang boarders',
 
   'stats.eyebrow': 'Ngano BoardEase',
   'stats.title': 'Tanan nga Kinahanglan sa Landlord aron Padagan ang Boarding House',

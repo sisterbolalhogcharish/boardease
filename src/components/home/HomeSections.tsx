@@ -4,7 +4,6 @@ import {
   BedDouble,
   Car,
   Check,
-  CreditCard,
   DoorOpen,
   Quote,
   School,
@@ -106,15 +105,18 @@ export function Locations() {
 /* ------------------------------------------------------------------ */
 /*  Categories                                                         */
 /* ------------------------------------------------------------------ */
+/* Each card maps to a real /search filter so results always match the
+   category's label (roomType + gender + amenity params are all honored by
+   the Search page and the API). */
 const CATEGORY_DEFS = [
-  { icon: BedDouble, labelKey: 'categories.bedspace', descKey: 'categories.bedspaceDesc', query: 'Bedspace', color: 'bg-brand-50 text-brand-500' },
-  { icon: DoorOpen, labelKey: 'categories.private', descKey: 'categories.privateDesc', query: 'Private Rooms', color: 'bg-navy-50 text-navy-800' },
-  { icon: Snowflake, labelKey: 'categories.aircon', descKey: 'categories.airconDesc', query: 'With Aircon', color: 'bg-mint-50 text-mint-600' },
-  { icon: Venus, labelKey: 'categories.female', descKey: 'categories.femaleDesc', query: 'Female Only', color: 'bg-pink-50 text-pink-500' },
-  { icon: School, labelKey: 'categories.school', descKey: 'categories.schoolDesc', query: 'Near School', color: 'bg-amber-50 text-amber-soft' },
-  { icon: Wifi, labelKey: 'categories.wifi', descKey: 'categories.wifiDesc', query: 'Fast WiFi', color: 'bg-indigo-50 text-indigo-500' },
-  { icon: Car, labelKey: 'categories.parking', descKey: 'categories.parkingDesc', query: 'With Parking', color: 'bg-emerald-50 text-emerald-600' },
-  { icon: CreditCard, labelKey: 'categories.gcash', descKey: 'categories.gcashDesc', query: 'Pay via GCash', color: 'bg-rose-50 text-rose-500' },
+  { icon: BedDouble, labelKey: 'categories.bedspace', descKey: 'categories.bedspaceDesc', to: '/search?roomType=bedspace', color: 'bg-brand-50 text-brand-500' },
+  { icon: DoorOpen, labelKey: 'categories.private', descKey: 'categories.privateDesc', to: '/search?roomType=single&roomType=double&roomType=studio', color: 'bg-navy-50 text-navy-800' },
+  { icon: Snowflake, labelKey: 'categories.aircon', descKey: 'categories.airconDesc', to: '/search?aircon=true', color: 'bg-mint-50 text-mint-600' },
+  { icon: Venus, labelKey: 'categories.female', descKey: 'categories.femaleDesc', to: '/search?gender=female', color: 'bg-pink-50 text-pink-500' },
+  { icon: School, labelKey: 'categories.school', descKey: 'categories.schoolDesc', to: '/search?school=Siquijor%20State%20College', color: 'bg-amber-50 text-amber-soft' },
+  { icon: Wifi, labelKey: 'categories.wifi', descKey: 'categories.wifiDesc', to: '/search?wifi=true', color: 'bg-indigo-50 text-indigo-500' },
+  { icon: Car, labelKey: 'categories.parking', descKey: 'categories.parkingDesc', to: '/search?parking=true', color: 'bg-emerald-50 text-emerald-600' },
+  { icon: Users, labelKey: 'categories.mixed', descKey: 'categories.mixedDesc', to: '/search?gender=mixed', color: 'bg-rose-50 text-rose-500' },
 ]
 
 export function Categories() {
@@ -129,9 +131,9 @@ export function Categories() {
       />
       <div className="mt-12 grid grid-cols-2 gap-4 sm:grid-cols-4">
         {CATEGORY_DEFS.map((c, i) => (
-          <Reveal key={c.query} delay={i * 0.04}>
+          <Reveal key={c.labelKey} delay={i * 0.04}>
             <Link
-              to={`/search?q=${encodeURIComponent(c.query)}`}
+              to={c.to}
               className="group flex flex-col items-start gap-3 rounded-[18px] border border-slate-100 bg-white p-5 shadow-card transition-all duration-300 hover:-translate-y-1 hover:shadow-card-hover"
             >
               <span className={cn('flex h-11 w-11 items-center justify-center rounded-2xl transition-transform duration-300 group-hover:scale-110', c.color)}>
