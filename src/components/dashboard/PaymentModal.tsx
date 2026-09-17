@@ -15,7 +15,11 @@ import { cn, peso } from '../../lib/utils'
  * Only GCash is offered, hence a single method tile rather than a row of brand
  * logos we have no assets for — the GCash mark is the one logo we ship.
  */
-const QR_SRC = '/pictures/instapay.jpg'
+// Each plan has its own InstaPay QR, named after its exact price — the QR a
+// landlord scans already carries the right amount for the chosen plan:
+// Basic ₱199 → 199.jpg, Standard ₱499 → 499.jpg, Premium ₱899 → 899.jpg.
+// A new plan just needs an image named after its price in /public/pictures.
+const qrForPrice = (price: number) => `/pictures/${price}.jpg`
 
 /** Official GCash brand mark, in the tile beside the method name. */
 const GCASH_MARK_SRC = '/pictures/gcash-mark.svg'
@@ -79,6 +83,8 @@ export default function PaymentModal({
   sent: boolean
   onSubmitReceipt: (receiptUrl: string) => void
 }) {
+  // The QR shown for this plan — matched to the plan's price.
+  const qrSrc = qrForPrice(planPrice)
   const [step, setStep] = useState<'instructions' | 'upload'>('instructions')
   /** Which checklist row the glow is sitting on right now. */
   const [activeStep, setActiveStep] = useState(0)
@@ -191,14 +197,14 @@ export default function PaymentModal({
               <div className="space-y-2">
                 <div className="rounded-xl border border-slate-200 bg-white p-2">
                   <img
-                    src={QR_SRC}
-                    alt="GCash QR code — scan to pay"
+                    src={qrSrc}
+                    alt={`GCash QR code — scan to pay ${peso(planPrice)}`}
                     className="h-40 w-full rounded-lg object-contain"
                   />
                 </div>
                 <a
-                  href={QR_SRC}
-                  download="boardease-gcash-qr.jpg"
+                  href={qrSrc}
+                  download={`boardease-qr-${planPrice}.jpg`}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white shadow-[0_8px_20px_rgb(30_115_232/0.3)] transition hover:-translate-y-0.5 hover:bg-brand-600"
                 >
                   <Download size={15} /> Save QR
@@ -276,8 +282,8 @@ export default function PaymentModal({
             <div className="grid gap-4 sm:grid-cols-[minmax(0,150px)_1fr]">
               <div className="rounded-xl border border-slate-200 bg-white p-2">
                 <img
-                  src={QR_SRC}
-                  alt="GCash QR code"
+                  src={qrSrc}
+                  alt={`GCash QR code for the ${planName} plan`}
                   className="h-32 w-full rounded-lg object-contain"
                 />
               </div>
