@@ -1,4 +1,4 @@
-import { Camera, Check, Eye, EyeOff, Mail, Phone, Save, ShieldCheck, User, Lock } from 'lucide-react'
+import { Camera, Eye, EyeOff, Mail, Phone, ShieldCheck, User, Lock } from 'lucide-react'
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useAuth } from '../../lib/auth'
 import { Avatar, Spinner } from '../../components/ui'
@@ -266,7 +266,6 @@ export default function AdminSettings() {
               disabled={saved}
               className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-6 py-2.5 text-sm font-bold text-white shadow-[0_8px_20px_rgb(30_115_232/0.3)] transition hover:-translate-y-0.5 hover:bg-brand-600 disabled:opacity-70"
             >
-              {saved ? <Check size={16} /> : <Save size={16} />}
               {saved ? 'Saved!' : 'Save profile'}
             </button>
           </div>

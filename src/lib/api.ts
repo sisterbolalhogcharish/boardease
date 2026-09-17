@@ -896,6 +896,8 @@ export interface LandlordProfilePatch {
   phone?: string
   property?: string
   avatarUrl?: string
+  /** Settings → Notification preferences toggles, persisted as a JSON blob. */
+  notifyPrefs?: Record<string, boolean>
 }
 
 export async function updateLandlordProfile(patch: LandlordProfilePatch): Promise<{ ok: boolean }> {

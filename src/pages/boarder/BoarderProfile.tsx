@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Bell, Camera, Mail, Phone, Save, ShieldCheck, Trash2, UserCog, User as UserIcon } from 'lucide-react'
+import { Bell, Camera, Mail, Phone, ShieldCheck, Trash2, UserCog, User as UserIcon } from 'lucide-react'
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Avatar, Skeleton } from '../../components/ui'
@@ -378,7 +378,7 @@ export default function BoarderProfile() {
             disabled={updateProfile.isPending}
             className="mt-6 inline-flex items-center gap-2 rounded-xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
           >
-            <Save size={15} /> {updateProfile.isPending ? 'Saving…' : 'Save changes'}
+            {updateProfile.isPending ? 'Saving…' : 'Save changes'}
           </button>
         </form>
       )}

@@ -14,6 +14,8 @@ export interface AuthUser {
   phone?: string
   /** Landlord's boarding house / property name. Empty for boarders. */
   property?: string
+  /** Notification preferences from Settings — keys per toggle, persisted server-side. */
+  notifyPrefs?: Record<string, boolean>
 }
 
 interface AuthResult {
@@ -82,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Landlords: business name of their boarding house, so the Settings
         // "Property / boarding house name" field prefills after re-login.
         property: found.property || undefined,
+        notifyPrefs: found.notify_prefs || undefined,
       }
       setUser(authUser)
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(authUser))

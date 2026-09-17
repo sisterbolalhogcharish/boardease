@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { CheckCircle2, Crown, Mail, MessageSquare, Search, Send, ShieldCheck } from 'lucide-react'
 import { EmptyState, Spinner } from '../../components/ui'
@@ -7,6 +7,10 @@ import { cn } from '../../lib/utils'
 
 const formatDate = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—'
+
+/** "Open" count last seen by the admin — keeps the tab counter cleared for
+ * the session until new messages arrive. */
+let seenOpenCount = 0
 
 export default function AdminMessages() {
   const [filter, setFilter] = useState<'open' | 'replied' | 'all'>('open')
@@ -31,6 +35,14 @@ export default function AdminMessages() {
   })
 
   const openCount = (messages ?? []).filter((m) => !m.reply).length
+  const [seenOpen, setSeenOpen] = useState(seenOpenCount)
+
+  // Viewing the Open filter clears its counter until new messages arrive.
+  useEffect(() => {
+    if (filter !== 'open') return
+    seenOpenCount = openCount
+    setSeenOpen((s) => (s === openCount ? s : openCount))
+  }, [filter, openCount])
 
   const send = async (id: string) => {
     setError('')
@@ -64,7 +76,7 @@ export default function AdminMessages() {
         <div className="flex gap-1 rounded-xl border border-slate-200 bg-white p-1">
           {(
             [
-              ['open', openCount > 0 ? `Open (${openCount})` : 'Open'],
+              ['open', filter !== 'open' && openCount > seenOpen ? `Open (${openCount})` : 'Open'],
               ['replied', 'Replied'],
               ['all', 'All'],
             ] as const

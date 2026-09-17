@@ -14,7 +14,6 @@ import {
   Pencil,
   Plus,
   Repeat,
-  Save,
   Star,
   Trash2,
   Upload,
@@ -240,15 +239,19 @@ function Field({
   required?: boolean
   children: React.ReactNode
 }) {
+  // A plain div, not a <label>: several fields (chip lists, toggles) contain
+  // buttons, and interactive content nested in a label makes clicks behave
+  // unpredictably across browsers — the label tries to redirect the
+  // activation to the first input it finds.
   return (
-    <label className="block">
+    <div>
       <span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-navy-700">
         {label}
         {required && <span className="text-danger">*</span>}
       </span>
       {children}
       {hint && <span className="mt-1 block text-[11px] text-mut">{hint}</span>}
-    </label>
+    </div>
   )
 }
 
@@ -275,23 +278,38 @@ function ChipList({
   placeholder: string
 }) {
   const [draft, setDraft] = useState('')
+  const [note, setNote] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const add = () => {
     const value = draft.trim()
-    if (!value || values.includes(value)) {
-      setDraft('')
+    if (!value) {
+      // Nothing typed yet — put the cursor back so it's obvious where to type.
+      inputRef.current?.focus()
+      return
+    }
+    if (values.includes(value)) {
+      setNote(`"${value}" is already in the list.`)
+      inputRef.current?.focus()
       return
     }
     onChange([...values, value])
     setDraft('')
+    setNote('')
+    // Keep the cursor in the field so several entries can be added in a row.
+    inputRef.current?.focus()
   }
 
   return (
     <div>
       <div className="flex gap-2">
         <input
+          ref={inputRef}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            if (note) setNote('')
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()
@@ -309,6 +327,7 @@ function ChipList({
           <Plus size={15} /> Add
         </button>
       </div>
+      {note && <p className="mt-2 text-[11px] font-medium text-amber-soft">{note}</p>}
       {values.length > 0 && (
         <ul className="mt-3 flex flex-wrap gap-2">
           {values.map((value) => (
@@ -807,7 +826,7 @@ export default function MyBoardingHouse() {
 
   const renameVideo = (video: StagedVideo) => {
     setRenameVideoId(video.id)
-    setRenameDraft(video.pendingTitle ?? video.title)
+    setRenameDraft(video.title)
   }
 
   const confirmVideoRename = () => {
@@ -1493,7 +1512,7 @@ export default function MyBoardingHouse() {
               </>
             ) : (
               <>
-                <Save size={16} /> {house ? 'Save changes' : 'Create my boarding house'}
+                {house ? 'Save changes' : 'Create my boarding house'}
               </>
             )}
           </button>
@@ -1661,7 +1680,7 @@ export default function MyBoardingHouse() {
               type="submit"
               className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600"
             >
-              <Check size={15} /> Save title
+              Save title
             </button>
             <button
               type="button"

@@ -16,7 +16,10 @@ const STATUS_STYLE: Record<Boarder['status'], { label: string; cls: string }> = 
 export default function Boarders() {
   const [q, setQ] = useState('')
   const [gender, setGender] = useState<'all' | 'male' | 'female'>('all')
+  // Filtered list drives the table; an unfiltered fetch drives the counts so
+  // "1 boarders · 1 female · 0 male" stays truthful while a filter is active.
   const { data: boarders, isLoading } = useBoarders({ q: q || undefined, gender: gender === 'all' ? undefined : gender })
+  const { data: allBoarders } = useBoarders()
   const { data: rooms } = useRooms()
   const addBoarder = useAddBoarder()
   const removeBoarder = useRemoveBoarder()
@@ -58,9 +61,9 @@ export default function Boarders() {
   }
 
   const countByGender = useMemo(() => {
-    const all = boarders ?? []
+    const all = allBoarders ?? boarders ?? []
     return { total: all.length, male: all.filter((b) => b.gender === 'male').length, female: all.filter((b) => b.gender === 'female').length }
-  }, [boarders])
+  }, [allBoarders, boarders])
 
   return (
     <div className="space-y-5">

@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import {
+  AlertTriangle,
   ArrowRight,
   Bell,
   Bot,
@@ -11,22 +12,26 @@ import {
   Home,
   LayoutDashboard,
   LineChart,
+  Loader2,
   LogOut,
   Menu,
   MessageCircle,
   Receipt,
   Settings,
   Star,
+  Trash2,
   Users,
   X,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
+import { deleteAccountAPI } from '../../lib/api'
+import { showToast } from '../../components/boarder/HouseActions'
 import { useLandlordHouse } from '../../lib/landlordHouse'
 import { useMarkNotificationsRead, useNotifications } from '../../lib/hooks'
 import { cn, timeAgo } from '../../lib/utils'
-import { Avatar, Spinner } from '../../components/ui'
+import { Avatar, Modal, Spinner } from '../../components/ui'
 import { usePlanFeatures } from '../../components/dashboard/PlanGate'
 
 const NAV = [
@@ -63,6 +68,11 @@ const NOTIF_ICON: Record<string, string> = {
 export default function DashboardLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const profileRef = useRef<HTMLDivElement>(null)
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const { user, logout } = useAuth()
@@ -80,6 +90,46 @@ export default function DashboardLayout() {
   const handleLogout = () => {
     logout()
     navigate('/login')
+  }
+
+  // The topbar avatar opens a small menu; deleting the account is a permanent
+  // action, so it opens the confirmation modal instead of acting directly.
+  useEffect(() => {
+    if (!profileOpen) return
+    const onPointer = (e: globalThis.MouseEvent) => {
+      if (!profileRef.current?.contains(e.target as Node)) setProfileOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setProfileOpen(false)
+    document.addEventListener('mousedown', onPointer)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [profileOpen])
+
+  const handleDeleteAccount = async () => {
+    if (!user) return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await deleteAccountAPI(user.id)
+      setDeleteOpen(false)
+      setProfileOpen(false)
+      // The toast host lives above the routes, so the confirmation stays
+      // visible on the landing page after the redirect.
+      showToast(
+        house
+          ? 'Your account and boarding house listing have been permanently deleted.'
+          : 'Your account has been permanently deleted.',
+      )
+      logout()
+      navigate('/', { replace: true })
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Could not delete the account. Please try again.')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const unread = notifications?.filter((n) => !n.read).length ?? 0
@@ -285,18 +335,72 @@ export default function DashboardLayout() {
             >
               View public site
             </Link>
-            <button
-              className="rounded-full"
-              aria-label={user?.name ? `${user.name} profile` : 'Profile'}
-            >
-              <Avatar
-                src={user?.avatarUrl}
-                name={user?.name}
-                color={user?.avatarColor}
-                className="h-10 w-10 text-sm"
-                rounded="full"
-              />
-            </button>
+            <div className="relative" ref={profileRef}>
+              <button
+                onClick={() => setProfileOpen((o) => !o)}
+                className="rounded-full transition hover:opacity-90"
+                aria-label={user?.name ? `${user.name} profile` : 'Profile'}
+                aria-expanded={profileOpen}
+                aria-haspopup="menu"
+              >
+                <Avatar
+                  src={user?.avatarUrl}
+                  name={user?.name}
+                  color={user?.avatarColor}
+                  className="h-10 w-10 text-sm"
+                  rounded="full"
+                />
+              </button>
+              <AnimatePresence>
+                {profileOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 6, scale: 0.98 }}
+                    transition={{ duration: 0.16 }}
+                    role="menu"
+                    className="absolute right-0 top-12 z-50 w-60 overflow-hidden rounded-[18px] border border-slate-100 bg-white shadow-float"
+                  >
+                    <div className="border-b border-slate-100 px-4 py-3.5">
+                      <p className="truncate text-sm font-bold text-navy-800">{user?.name}</p>
+                      <p className="truncate text-[11px] text-mut">{user?.email}</p>
+                    </div>
+                    <div className="border-b border-slate-100 py-1.5">
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setProfileOpen(false)
+                          navigate('/dashboard/settings')
+                        }}
+                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-medium text-navy-700 transition hover:bg-surface"
+                      >
+                        <Settings size={16} className="text-mut" /> Account settings
+                      </button>
+                      <button
+                        role="menuitem"
+                        onClick={handleLogout}
+                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-danger transition hover:bg-red-50"
+                      >
+                        <LogOut size={16} /> Log out
+                      </button>
+                    </div>
+                    <div className="py-1.5">
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setProfileOpen(false)
+                          setDeleteError('')
+                          setDeleteOpen(true)
+                        }}
+                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-danger transition hover:bg-red-50"
+                      >
+                        <Trash2 size={16} /> Delete account
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
             <button className="rounded-xl p-2 text-navy-700 transition hover:bg-navy-50 lg:hidden" aria-label="Close">
               <X size={18} className="opacity-0" />
             </button>
@@ -373,6 +477,43 @@ export default function DashboardLayout() {
           </motion.div>
         </main>
       </div>
+
+      {/* Delete-account confirmation — a permanent action, so it asks first.
+          For a landlord this also takes down their whole listing. */}
+      <Modal open={deleteOpen} onClose={deleting ? () => {} : () => setDeleteOpen(false)} title="Delete account?">
+        <div className="space-y-4">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-50 text-danger">
+            <AlertTriangle size={24} />
+          </span>
+          <p className="text-center text-sm font-semibold text-navy-800">
+            Are you sure you want to delete? All the information you have will be permanently deleted.
+          </p>
+          <ul className="space-y-1.5 rounded-xl bg-surface p-4 text-[13px] text-ink">
+            <li>• Your account and profile information</li>
+            <li>• Your boarding house listing, rooms and photos</li>
+            <li>• Boarder rentals, reservations and payment records</li>
+            <li>• Your reviews, favorites and messages</li>
+          </ul>
+          {deleteError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-danger">{deleteError}</p>}
+          <div className="flex flex-col gap-2 sm:flex-row-reverse">
+            <button
+              onClick={handleDeleteAccount}
+              disabled={deleting}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-danger px-5 py-3 text-sm font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
+            >
+              {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+              {deleting ? 'Deleting…' : 'Delete permanently'}
+            </button>
+            <button
+              onClick={() => setDeleteOpen(false)}
+              disabled={deleting}
+              className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-navy-800 transition hover:border-slate-300 disabled:opacity-60"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

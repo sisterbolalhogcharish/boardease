@@ -167,13 +167,17 @@ app.post('/api/auth/login', async (req, res) => {
     }
     const cleanEmail = String(email).trim().toLowerCase()
     const [rows] = await pool.query(
-      'SELECT u.id, u.email, u.name, u.role, u.avatar_color, u.avatar_url, u.phone, l.business_name AS property FROM users u LEFT JOIN landlords l ON l.user_id = u.id WHERE u.email = ? AND u.password = ?',
+      'SELECT u.id, u.email, u.name, u.role, u.avatar_color, u.avatar_url, u.phone, u.notify_prefs, l.business_name AS property FROM users u LEFT JOIN landlords l ON l.user_id = u.id WHERE u.email = ? AND u.password = ?',
       [cleanEmail, password]
     )
     if (rows.length === 0) {
       return res.status(401).json({ error: 'Invalid email or password' })
     }
-    res.json({ ...rows[0], property: rows[0].property || '' })
+    // Notification preferences ride along as a JSON object so Settings
+    // reopens with the same toggles the user left them at.
+    let prefs = null
+    try { prefs = rows[0].notify_prefs ? JSON.parse(rows[0].notify_prefs) : null } catch { prefs = null }
+    res.json({ ...rows[0], property: rows[0].property || '', notify_prefs: prefs })
   } catch (err) {
     console.error('Login error:', err)
     res.status(500).json({ error: dbErrorMessage(err) })
@@ -247,18 +251,24 @@ app.delete('/api/auth/account', async (req, res) => {
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Account not found. Sign in and try again.' })
     }
-    // Owner accounts hold live listings, boarders and rent records — they are
-    // off-boarded by BoardEase administration instead of self-service.
-    if (rows[0].role !== 'boarder') {
-      return res.status(403).json({ error: 'Only boarder accounts can be deleted here.' })
+    // Admin accounts hold moderation history for the whole platform — they are
+    // never self-deleted.
+    if (rows[0].role === 'admin') {
+      return res.status(403).json({ error: 'Admin accounts cannot be deleted here.' })
     }
 
     const conn = await pool.getConnection()
     try {
       await conn.beginTransaction()
 
-      // Snapshot what is about to be removed so a receipt can be archived —
-      // once the user row is gone, this data no longer exists anywhere.
+      // Receipt accumulators, filled by whichever role branch runs below.
+      const receipt = { reservations: 0, rentals: 0, reviews: 0, favorites: 0, messages: 0, houses: 0, rooms: 0 }
+      // Boarders to notify after commit (only for a deleted landlord).
+      const boarderNotices = []
+
+      if (rows[0].role === 'boarder') {
+        // Snapshot what is about to be removed so a receipt can be archived —
+        // once the user row is gone, this data no longer exists anywhere.
       const [cRes] = await conn.query('SELECT COUNT(*) AS n FROM reservations WHERE boarder_id = ?', [id])
       const [cRent] = await conn.query('SELECT COUNT(*) AS n FROM boarder_rentals WHERE boarder_id = ?', [id])
       const [cRev] = await conn.query('SELECT COUNT(*) AS n FROM reviews WHERE boarder_id = ?', [id])
@@ -325,6 +335,83 @@ app.delete('/api/auth/account', async (req, res) => {
       await conn.query('DELETE FROM boarder_profiles WHERE user_id = ?', [id])
       await conn.query('DELETE FROM users WHERE id = ? AND role = "boarder"', [id])
 
+      receipt.reservations = Number(cRes[0]?.n || 0)
+      receipt.rentals = Number(cRent[0]?.n || 0)
+      receipt.reviews = Number(cRev[0]?.n || 0)
+      receipt.favorites = Number(cFav[0]?.n || 0)
+      receipt.messages = Number(cMsg[0]?.n || 0)
+      } else {
+        // LANDLORD: the account owns a listing, so deletion removes the whole
+        // property — rooms, photos, videos, and the rentals of the boarders
+        // living there. Boarders keep their own accounts.
+        const [lands] = await conn.query('SELECT id FROM landlords WHERE user_id = ?', [id])
+        const landlordId = lands.length > 0 ? lands[0].id : null
+        const [houses] = landlordId
+          ? await conn.query('SELECT id FROM boarding_houses WHERE landlord_id = ?', [landlordId])
+          : [[]]
+        const houseIds = houses.map((h) => h.id)
+        receipt.houses = houseIds.length
+
+        if (houseIds.length > 0) {
+          const ph = houseIds.map(() => '?').join(', ')
+          const [cRooms] = await conn.query(`SELECT COUNT(*) AS n FROM rooms WHERE house_id IN (${ph})`, houseIds)
+          receipt.rooms = Number(cRooms[0]?.n || 0)
+          const [cResv] = await conn.query(`SELECT COUNT(*) AS n FROM reservations WHERE house_id IN (${ph})`, houseIds)
+          receipt.reservations = Number(cResv[0]?.n || 0)
+          const [cRev] = await conn.query(`SELECT COUNT(*) AS n FROM reviews WHERE house_id IN (${ph})`, houseIds)
+          receipt.reviews = Number(cRev[0]?.n || 0)
+          const [cFav] = await conn.query(`SELECT COUNT(*) AS n FROM favorites WHERE house_id IN (${ph})`, houseIds)
+          receipt.favorites = Number(cFav[0]?.n || 0)
+          const [cMsg] = await conn.query(
+            `SELECT COUNT(*) AS n FROM messages m
+             JOIN conversations c ON c.id = m.conversation_id
+             WHERE c.house_id IN (${ph})`,
+            houseIds
+          )
+          receipt.messages = Number(cMsg[0]?.n || 0)
+          const [cRent] = await conn.query(`SELECT COUNT(*) AS n FROM boarder_rentals WHERE house_id IN (${ph})`, houseIds)
+          receipt.rentals = Number(cRent[0]?.n || 0)
+
+          // Boarders who lived here should hear their rental ended — after commit.
+          const [affected] = await conn.query(
+            `SELECT DISTINCT boarder_id AS bid FROM boarder_rentals WHERE house_id IN (${ph})`,
+            houseIds
+          )
+          for (const b of affected) boarderNotices.push(b.bid)
+
+          // Children first, then the houses themselves.
+          await conn.query(
+            `DELETE m FROM messages m
+             JOIN conversations c ON c.id = m.conversation_id
+             WHERE c.house_id IN (${ph})`,
+            houseIds
+          )
+          await conn.query(`DELETE FROM conversations WHERE house_id IN (${ph})`, houseIds)
+          await conn.query(
+            `DELETE p FROM payments p
+             JOIN boarder_rentals br ON br.id = p.rental_id
+             WHERE br.house_id IN (${ph})`,
+            houseIds
+          )
+          await conn.query(`DELETE FROM boarder_rentals WHERE house_id IN (${ph})`, houseIds)
+          await conn.query(`DELETE FROM reservations WHERE house_id IN (${ph})`, houseIds)
+          await conn.query(`DELETE FROM reviews WHERE house_id IN (${ph})`, houseIds)
+          await conn.query(`DELETE FROM favorites WHERE house_id IN (${ph})`, houseIds)
+          await conn.query(`DELETE FROM house_images WHERE house_id IN (${ph})`, houseIds)
+          await conn.query(`DELETE FROM house_videos WHERE house_id IN (${ph})`, houseIds)
+          await conn.query(`DELETE FROM rooms WHERE house_id IN (${ph})`, houseIds)
+          await conn.query(`DELETE FROM boarding_houses WHERE id IN (${ph})`, houseIds)
+        }
+        if (landlordId) {
+          await conn.query('DELETE FROM landlord_documents WHERE landlord_id = ?', [landlordId])
+          await conn.query('DELETE FROM subscription_receipts WHERE landlord_id = ?', [landlordId])
+          await conn.query('DELETE FROM admin_messages WHERE landlord_id = ?', [landlordId])
+          await conn.query('DELETE FROM landlords WHERE id = ?', [landlordId])
+        }
+        await conn.query('DELETE FROM notifications WHERE user_id = ?', [id])
+        await conn.query('DELETE FROM users WHERE id = ? AND role = "landlord"', [id])
+      }
+
       // Archive the deletion receipt — the permanent record of this request.
       // Its absence (older database) must not block the deletion itself.
       try {
@@ -337,11 +424,11 @@ app.delete('/api/auth/account', async (req, res) => {
             rows[0].name || null,
             rows[0].email,
             rows[0].role,
-            Number(cRes[0]?.n || 0),
-            Number(cRent[0]?.n || 0),
-            Number(cRev[0]?.n || 0),
-            Number(cFav[0]?.n || 0),
-            Number(cMsg[0]?.n || 0),
+            receipt.reservations,
+            receipt.rentals,
+            receipt.reviews,
+            receipt.favorites,
+            receipt.messages,
           ]
         )
       } catch (rcptErr) {
@@ -354,9 +441,22 @@ app.delete('/api/auth/account', async (req, res) => {
       // no longer receive notifications themselves.
       try {
         const [admins] = await pool.query("SELECT id FROM users WHERE role = 'admin'")
-        const summary = `${rows[0].name || rows[0].email} (${rows[0].email}) deleted their boarder account. A deletion receipt was archived in the Admin console.`
+        const roleLabel = rows[0].role === 'landlord' ? 'landlord' : 'boarder'
+        const extras = rows[0].role === 'landlord' && receipt.houses > 0 ? ` Their listing (${receipt.houses} house, ${receipt.rooms} rooms) was removed.` : ''
+        const summary = `${rows[0].name || rows[0].email} (${rows[0].email}) deleted their ${roleLabel} account.${extras} A deletion receipt was archived in the Admin console.`
         for (const a of admins) {
-          await insertNotification(a.id, 'contract', 'Boarder account deleted', summary)
+          await insertNotification(a.id, 'contract', `${roleLabel === 'landlord' ? 'Landlord' : 'Boarder'} account deleted`, summary)
+        }
+        // Boarders who lived in a deleted landlord's house deserve to know
+        // their rental ended — point them at their reservations page.
+        for (const bid of boarderNotices) {
+          await insertNotification(
+            bid,
+            'contract',
+            'Your boarding house was removed',
+            'The boarding house you were staying at has been taken down by its owner. Your rental has ended — check Reservations for details.',
+            '/boarder/reservations'
+          )
         }
       } catch (notifErr) {
         console.error('Admin deletion notification failed:', notifErr.message)
@@ -1448,7 +1548,13 @@ app.get('/api/boarders', async (req, res) => {
     `
     const params = []
     if (q) { sql += ' AND (u.name LIKE ? OR bp.school LIKE ?)'; params.push(`%${q}%`, `%${q}%`) }
-    if (gender) { sql += ' AND bp.gender = ?'; params.push(gender) }
+    if (gender) {
+      // Self-registered boarders have no gender on their profile yet, and the
+      // UI presents them as female — so the filter must match that convention
+      // or "Female"/"Male" would both return an empty list.
+      sql += ' AND (bp.gender = ? OR (bp.gender IS NULL AND ? = "female"))'
+      params.push(gender, gender)
+    }
     if (roomId) { sql += ' AND br.room_id = ?'; params.push(roomId) }
     if (hid !== null) { sql += ' AND br.house_id = ?'; params.push(hid) }
     sql += ' ORDER BY u.name'
@@ -2529,6 +2635,11 @@ app.put('/api/boarder/profile', async (req, res) => {
 
     if (name !== undefined) await pool.query('UPDATE users SET name = ? WHERE id = ?', [name, userId])
     if (phone !== undefined) await pool.query('UPDATE users SET phone = ? WHERE id = ?', [phone, userId])
+    // Notification preferences (Settings toggles) — stored as a JSON blob.
+    const { notifyPrefs } = req.body
+    if (notifyPrefs !== undefined && notifyPrefs && typeof notifyPrefs === 'object') {
+      await pool.query('UPDATE users SET notify_prefs = ? WHERE id = ?', [JSON.stringify(notifyPrefs), userId])
+    }
 
     // Landlords only: "Property / boarding house name" — stored on the
     // landlord profile as the business name, which is what Explore shows.
@@ -2586,6 +2697,14 @@ async function ensureSchema() {
     if (!Number(cols[0]?.n)) {
       await pool.query('ALTER TABLE users ADD COLUMN avatar_url MEDIUMTEXT DEFAULT NULL AFTER avatar_color')
       console.log('✅ Added users.avatar_url — profile photos enabled')
+    }
+    const [prefCols] = await pool.query(
+      `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'notify_prefs'`
+    )
+    if (!Number(prefCols[0]?.n)) {
+      await pool.query('ALTER TABLE users ADD COLUMN notify_prefs TEXT DEFAULT NULL')
+      console.log('✅ Added users.notify_prefs — notification preferences enabled')
     }
   } catch (err) {
     console.warn('Schema check skipped:', err.message)

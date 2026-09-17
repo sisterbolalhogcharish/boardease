@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { cn } from '../../lib/utils'
 import { deleteAccountAPI } from '../../lib/api'
+import { showToast } from './HouseActions'
 import { Avatar, Modal } from '../ui'
 
 /**
@@ -62,6 +63,9 @@ export default function ProfileMenu({
       await deleteAccountAPI(user.id)
       setConfirmOpen(false)
       setOpen(false)
+      // The toast host lives above the routes, so the confirmation stays
+      // visible on the landing page after the redirect.
+      showToast('Your account has been permanently deleted.')
       logout()
       navigate('/', { replace: true })
     } catch (err) {

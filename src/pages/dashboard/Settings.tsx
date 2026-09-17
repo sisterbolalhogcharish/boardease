@@ -1,8 +1,10 @@
-import { Camera, Check, Download, Languages, Loader2, Mail, Phone, Save, ShieldCheck, Trash2 } from 'lucide-react'
+import { AlertTriangle, Camera, Check, FileSpreadsheet, Languages, Loader2, Mail, Phone, ShieldCheck, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useLanguage, type LangCode } from '../../lib/i18n'
 import { useAuth } from '../../lib/auth'
-import { Avatar } from '../../components/ui'
+import { deleteAccountAPI, getPayments } from '../../lib/api'
+import { Avatar, Modal } from '../../components/ui'
 import { useUpdateLandlordProfile, useUpdateProfile } from '../../lib/hooks'
 import { cn } from '../../lib/utils'
 import { showToast } from '../../components/boarder/HouseActions'
@@ -17,8 +19,22 @@ const TOGGLES = [
   { key: 'subscription', label: 'Subscription', desc: 'Reminders before my plan renews.' },
 ]
 
+/** Excel-friendly CSV: quoted cells, BOM so Excel reads UTF-8 (₱, ñ) right. */
+function downloadCSV(filename: string, rows: (string | number)[][], headers: string[]) {
+  const csv = [headers, ...rows]
+    .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export default function Settings() {
-  const { user, updateUser } = useAuth()
+  const { user, updateUser, logout } = useAuth()
   const { lang, setLang, t, languages } = useLanguage()
   const updateProfile = useUpdateProfile(user?.id?.toString())
   const updateLandlordProfile = useUpdateLandlordProfile(user?.id?.toString())
@@ -26,9 +42,16 @@ export default function Settings() {
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [photoBusy, setPhotoBusy] = useState(false)
+  const [exportingCsv, setExportingCsv] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const navigate = useNavigate()
   // Pending photo awaiting the crop step — set by "Add/Change photo", consumed
   // by the cropper's Apply, which hands back the final square data URL.
   const [pendingPhoto, setPendingPhoto] = useState<File | null>(null)
+  // Notification toggles seed from the saved preferences (login payload),
+  // falling back to the defaults below for accounts that never saved any.
   const [prefs, setPrefs] = useState<Record<string, boolean>>({
     rentDue: true,
     late: true,
@@ -36,6 +59,7 @@ export default function Settings() {
     vacant: false,
     review: true,
     subscription: true,
+    ...(user?.notifyPrefs ?? {}),
   })
   const photoInput = useRef<HTMLInputElement>(null)
 
@@ -106,6 +130,71 @@ export default function Settings() {
       setError(err instanceof Error ? err.message : 'Could not remove your profile photo.')
     } finally {
       setPhotoBusy(false)
+    }
+  }
+
+  // Toggles save immediately — no need to hunt for the Save button.
+  const togglePref = async (key: string) => {
+    if (!user) return
+    const next = { ...prefs, [key]: !prefs[key] }
+    setPrefs(next)
+    try {
+      await runProfileMutation({ userId: user.id.toString(), notifyPrefs: next })
+      updateUser({ notifyPrefs: next })
+      setNotice('')
+      setError('')
+    } catch (err) {
+      // Revert the switch if the server refused it, so the UI never lies.
+      setPrefs((p) => ({ ...p, [key]: !next[key] }))
+      setError(err instanceof Error ? err.message : 'Could not save your notification preferences.')
+    }
+  }
+
+  // Payments-only export in CSV, so it opens straight in Excel / Google
+  // Sheets — mirrors the Reports page's spreadsheet export.
+  const exportPaymentsCsv = async () => {
+    if (!user) return
+    setExportingCsv(true)
+    setError('')
+    try {
+      const rows = await getPayments({ userId: user.id.toString() })
+      downloadCSV(
+        `boardease-payments-${new Date().toISOString().slice(0, 10)}.csv`,
+        rows.map((p) => [
+          p.boarderName,
+          p.roomNo,
+          p.label,
+          p.amount,
+          p.dueDate,
+          p.paidDate ?? '',
+          p.method ?? '',
+          p.status,
+          p.reference ?? '',
+        ]),
+        ['Boarder', 'Room', 'Period', 'Amount (PHP)', 'Due date', 'Paid date', 'Method', 'Status', 'Reference'],
+      )
+      showToast('Payments CSV downloaded — opens in Excel.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not export your payments.')
+    } finally {
+      setExportingCsv(false)
+    }
+  }
+
+  const handleDeleteAccount = async () => {
+    if (!user) return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await deleteAccountAPI(user.id)
+      setDeleteOpen(false)
+      showToast('Your account and boarding house listing have been permanently deleted.')
+      logout()
+      navigate('/', { replace: true })
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Could not delete the account. Please try again.')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -280,7 +369,7 @@ export default function Settings() {
 
           <div className="rounded-[18px] border border-slate-100 bg-white p-6 shadow-card">
             <h3 className="font-bold text-navy-800">Notification preferences</h3>
-            <p className="mt-0.5 text-xs text-mut">Choose which alerts you want to receive by email &amp; in-app.</p>
+            <p className="mt-0.5 text-xs text-mut">Choose which alerts you want to receive by email &amp; in-app. Changes save instantly.</p>
             <div className="mt-5 space-y-3">
               {TOGGLES.map((toggle) => (
                 <label key={toggle.key} className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-slate-100 p-4 transition hover:border-slate-200">
@@ -290,7 +379,9 @@ export default function Settings() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setPrefs((p) => ({ ...p, [toggle.key]: !p[toggle.key] }))}
+                    role="switch"
+                    aria-checked={!!prefs[toggle.key]}
+                    onClick={() => togglePref(toggle.key)}
                     className={cn('relative h-6 w-11 shrink-0 rounded-full transition', prefs[toggle.key] ? 'bg-mint-400' : 'bg-slate-200')}
                     aria-label={toggle.label}
                   >
@@ -303,11 +394,25 @@ export default function Settings() {
 
           <div className="rounded-[18px] border border-red-100 bg-white p-6 shadow-card">
             <h3 className="font-bold text-danger">Data &amp; account</h3>
+            <p className="mt-0.5 text-xs text-mut">Download your payment records as a spreadsheet, or delete the account for good.</p>
             <div className="mt-4 flex flex-wrap gap-3">
-              <button type="button" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-navy-800 transition hover:border-brand-300 hover:text-brand-500">
-                <Download size={15} /> Export all data
+              <button
+                type="button"
+                onClick={exportPaymentsCsv}
+                disabled={exportingCsv}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-navy-800 transition hover:border-brand-300 hover:text-brand-500 disabled:opacity-60"
+              >
+                {exportingCsv ? <Loader2 size={15} className="animate-spin" /> : <FileSpreadsheet size={15} />}
+                {exportingCsv ? 'Preparing…' : 'Export payments (CSV)'}
               </button>
-              <button type="button" className="rounded-xl border border-red-100 bg-red-50 px-4 py-2.5 text-sm font-semibold text-danger transition hover:bg-red-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteError('')
+                  setDeleteOpen(true)
+                }}
+                className="rounded-xl border border-red-100 bg-red-50 px-4 py-2.5 text-sm font-semibold text-danger transition hover:bg-red-100"
+              >
                 Delete account
               </button>
             </div>
@@ -329,7 +434,6 @@ export default function Settings() {
           disabled={saved || updateLandlordProfile?.isPending || updateProfile?.isPending}
           className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-6 py-3 text-sm font-bold text-white shadow-[0_10px_24px_rgb(30_115_232/0.35)] transition hover:-translate-y-0.5 hover:bg-brand-600 disabled:opacity-70"
         >
-          {saved ? <Check size={16} /> : <Save size={16} />}
           {saved ? 'Saving…' : (updateLandlordProfile?.isPending ?? updateProfile?.isPending ?? false) ? 'Saving…' : 'Save changes'}
         </button>
         {notice && (
@@ -339,6 +443,45 @@ export default function Settings() {
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-danger">{error}</p>
         )}
       </div>
+
+      {/* Delete-account confirmation — same agreement as the profile menu.
+          Deleting takes the listing, rooms and rentals down with it. */}
+      <Modal open={deleteOpen} onClose={deleting ? () => {} : () => setDeleteOpen(false)} title="Delete account?">
+        <div className="space-y-4">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-50 text-danger">
+            <AlertTriangle size={24} />
+          </span>
+          <p className="text-center text-sm font-semibold text-navy-800">
+            Are you sure you want to delete? All the information you have will be permanently deleted.
+          </p>
+          <ul className="space-y-1.5 rounded-xl bg-surface p-4 text-[13px] text-ink">
+            <li>• Your account and profile information</li>
+            <li>• Your boarding house listing, rooms and photos</li>
+            <li>• Boarder rentals, reservations and payment records</li>
+            <li>• Your reviews, favorites and messages</li>
+          </ul>
+          {deleteError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-danger">{deleteError}</p>}
+          <div className="flex flex-col gap-2 sm:flex-row-reverse">
+            <button
+              type="button"
+              onClick={handleDeleteAccount}
+              disabled={deleting}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-danger px-5 py-3 text-sm font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
+            >
+              {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+              {deleting ? 'Deleting…' : 'Delete permanently'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setDeleteOpen(false)}
+              disabled={deleting}
+              className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-navy-800 transition hover:border-slate-300 disabled:opacity-60"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </Modal>
 
     </form>
   )

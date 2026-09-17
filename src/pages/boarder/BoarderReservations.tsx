@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import { CalendarClock, Clock, MapPin, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { EmptyState, HouseImage, Modal, Skeleton } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
@@ -30,6 +30,10 @@ const ROOM_TYPE_LABEL: Record<string, string> = {
   studio: 'Studio',
 }
 
+/** Count each tab had when last viewed — keeps its counter cleared for the
+ * session (even after leaving the page) until something new arrives. */
+const seenTabCounts: Record<string, number> = {}
+
 export default function BoarderReservations() {
   const { user } = useAuth()
   const userId = user?.id?.toString()
@@ -48,6 +52,16 @@ export default function BoarderReservations() {
     for (const t of TABS) if (t.value !== 'all') base[t.value] = list.filter((r) => r.status === t.value).length
     return base
   }, [list])
+
+  const [seen, setSeen] = useState<Record<string, number>>({ ...seenTabCounts })
+
+  // Viewing a tab clears its counter — it only comes back once new items
+  // push the count past what was last seen there.
+  useEffect(() => {
+    const n = counts[tab] ?? 0
+    seenTabCounts[tab] = n
+    setSeen((s) => (s[tab] === n ? s : { ...s, [tab]: n }))
+  }, [tab, counts])
 
   const handleCancel = async (r: Reservation) => {
     setError('')
@@ -86,7 +100,9 @@ export default function BoarderReservations() {
               )}
             >
               {t.label}
-              {counts[t.value] > 0 && <span className="ml-1.5 text-[10px] opacity-80">{counts[t.value]}</span>}
+              {tab !== t.value && (counts[t.value] ?? 0) > (seen[t.value] ?? 0) && (
+                <span className="ml-1.5 text-[10px] opacity-80">{counts[t.value]}</span>
+              )}
             </button>
           ))}
         </div>
