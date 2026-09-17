@@ -3,7 +3,7 @@ import { CheckCircle, Clock, MessageSquare, Trash2, TrendingUp, Users } from 'lu
 import { StatCard } from '../../components/ui'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { getDeletionReceipts } from '../../lib/api'
+import { getDeletionReceipts, type SubscriptionReceipt } from '../../lib/api'
 import { cn, timeAgo } from '../../lib/utils'
 
 async function fetchAdminStats() {
@@ -12,7 +12,7 @@ async function fetchAdminStats() {
   return res.json()
 }
 
-async function fetchPendingReceipts() {
+async function fetchPendingReceipts(): Promise<SubscriptionReceipt[]> {
   const res = await fetch('/api/admin/receipts?status=pending')
   if (!res.ok) return []
   return res.json()
@@ -40,7 +40,7 @@ export default function AdminOverview() {
           icon={<Clock size={20} />}
           tone="orange"
           loading={statsLoading}
-          hint={pending?.length > 0 ? `${pending.length} awaiting review` : 'All caught up'}
+          hint={pending && pending.length > 0 ? `${pending.length} awaiting review` : 'All caught up'}
         />
         <StatCard
           label="Landlord Messages"
@@ -128,15 +128,22 @@ export default function AdminOverview() {
                 <p className="text-xs text-mut">No pending receipts to review.</p>
               </div>
             ) : (
-              pending.slice(0, 5).map((r: any) => (
-                <div key={r.id} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 transition hover:border-slate-200">
-                  <img src={r.receiptUrl} alt="Receipt" className="h-10 w-10 rounded-lg object-cover" />
+              // Each row opens the Payment Receipts page, where the proof of
+              // payment can be viewed full size before it is approved.
+              pending.slice(0, 5).map((r) => (
+                <Link
+                  key={r.id}
+                  to="/admin/receipts"
+                  title="View the proof of payment"
+                  className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 transition hover:border-brand-200 hover:bg-brand-50/40"
+                >
+                  <img src={r.receiptUrl} alt="" className="h-10 w-10 rounded-lg object-cover ring-1 ring-slate-200" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-navy-800">{r.landlordName}</p>
                     <p className="text-[11px] text-mut">Plan: {r.requestedPlan} · {r.submittedAt ? new Date(r.submittedAt).toLocaleDateString() : ''}</p>
                   </div>
                   <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-600">Pending</span>
-                </div>
+                </Link>
               ))
             )}
           </div>

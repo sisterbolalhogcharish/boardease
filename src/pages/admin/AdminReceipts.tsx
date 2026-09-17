@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Check, CheckCircle, Clock, FileText, Search, XCircle } from 'lucide-react'
+import { Check, CheckCircle, Clock, Download, Eye, FileText, Search, XCircle } from 'lucide-react'
 import { EmptyState, Modal, Spinner } from '../../components/ui'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { peso } from '../../lib/utils'
+import type { SubscriptionReceipt } from '../../lib/api'
+import { cn, peso } from '../../lib/utils'
 
-async function fetchReceipts(status?: string) {
+async function fetchReceipts(status?: string): Promise<SubscriptionReceipt[]> {
   const qs = status ? `?status=${status}` : ''
   const res = await fetch(`/api/admin/receipts${qs}`)
   if (!res.ok) return []
@@ -24,7 +25,11 @@ async function reviewReceipt(id: string, action: 'approved' | 'rejected', notes?
 export default function AdminReceipts() {
   const [filter, setFilter] = useState<string>('pending')
   const [search, setSearch] = useState('')
-  const [reviewing, setReviewing] = useState<any>(null)
+  const [reviewing, setReviewing] = useState<SubscriptionReceipt | null>(null)
+  // Receipt viewer. Reachable from every row regardless of status, so an admin
+  // can re-check the landlord's proof of payment at any time — not only while
+  // the receipt is still pending.
+  const [viewing, setViewing] = useState<SubscriptionReceipt | null>(null)
   const [notes, setNotes] = useState('')
   const qc = useQueryClient()
 
@@ -54,7 +59,7 @@ export default function AdminReceipts() {
     },
   })
 
-  const filtered = (receipts ?? []).filter((r: any) =>
+  const filtered = (receipts ?? []).filter((r) =>
     r.landlordName?.toLowerCase().includes(search.toLowerCase()) ||
     r.requestedPlan?.toLowerCase().includes(search.toLowerCase())
   )
@@ -114,7 +119,7 @@ export default function AdminReceipts() {
         <EmptyState icon={<FileText size={24} />} title="No receipts found" subtitle="No payment receipts match your filters." />
       ) : (
         <div className="space-y-3">
-          {filtered.map((r: any, i: number) => (
+          {filtered.map((r, i) => (
             <motion.div
               key={r.id}
               initial={{ opacity: 0, y: 10 }}
@@ -122,7 +127,20 @@ export default function AdminReceipts() {
               transition={{ delay: i * 0.03 }}
               className="flex flex-wrap items-center gap-4 rounded-[18px] border border-slate-100 bg-white p-5 shadow-card transition-shadow hover:shadow-card-hover"
             >
-              <img src={r.receiptUrl} alt="Receipt" className="h-16 w-16 rounded-xl object-cover ring-1 ring-slate-200" />
+              {/* Thumbnail opens the full receipt — clickable so the proof is one
+                  tap away even after the receipt has been approved. */}
+              <button
+                type="button"
+                onClick={() => setViewing(r)}
+                title="View proof of payment"
+                aria-label={`View proof of payment from ${r.landlordName}`}
+                className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-xl ring-1 ring-slate-200 transition hover:ring-2 hover:ring-brand-400"
+              >
+                <img src={r.receiptUrl} alt="" className="h-full w-full object-cover" />
+                <span className="absolute inset-0 flex items-center justify-center bg-navy-950/50 opacity-0 transition group-hover:opacity-100">
+                  <Eye size={18} className="text-white" />
+                </span>
+              </button>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <p className="font-bold text-navy-800">{r.landlordName}</p>
@@ -139,16 +157,22 @@ export default function AdminReceipts() {
                   <p className="mt-1 text-xs text-ink">Admin note: {r.notes}</p>
                 )}
               </div>
-              {r.status === 'pending' && (
-                <div className="flex gap-2">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setViewing(r)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-navy-700 transition hover:border-brand-300 hover:text-brand-600"
+                >
+                  <Eye size={14} /> View receipt
+                </button>
+                {r.status === 'pending' && (
                   <button
                     onClick={() => setReviewing(r)}
                     className="inline-flex items-center gap-1.5 rounded-xl bg-mint-50 px-4 py-2 text-sm font-bold text-mint-600 transition hover:bg-mint-100"
                   >
                     <Check size={14} /> Review
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </motion.div>
           ))}
         </div>
@@ -158,8 +182,21 @@ export default function AdminReceipts() {
       <Modal open={!!reviewing} onClose={() => { setReviewing(null); setNotes('') }} title="Review Payment Receipt" wide>
         {reviewing && (
           <div className="space-y-5">
-            <div className="flex items-start gap-4">
-              <img src={reviewing.receiptUrl} alt="Receipt" className="h-48 w-48 rounded-xl object-cover ring-1 ring-slate-200" />
+            <div className="flex flex-wrap items-start gap-4">
+              {/* object-contain, not cover: a cropped receipt hides the amount and
+                  reference number the admin is being asked to verify. */}
+              <button
+                type="button"
+                onClick={() => setViewing(reviewing)}
+                title="Open full receipt"
+                className="shrink-0 overflow-hidden rounded-xl bg-surface ring-1 ring-slate-200 transition hover:ring-2 hover:ring-brand-400"
+              >
+                <img
+                  src={reviewing.receiptUrl}
+                  alt={`Proof of payment from ${reviewing.landlordName}`}
+                  className="h-48 w-48 object-contain"
+                />
+              </button>
               <div>
                 <p className="text-lg font-bold text-navy-800">{reviewing.landlordName}</p>
                 <p className="text-sm text-ink">
@@ -209,8 +246,73 @@ export default function AdminReceipts() {
           </div>
         )}
       </Modal>
+
+      {/* Receipt viewer — the proof of payment stays available for reference no
+          matter what the admin decided. */}
+      <Modal open={!!viewing} onClose={() => setViewing(null)} title="Proof of Payment" wide>
+        {viewing && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-lg font-bold text-navy-800">{viewing.landlordName}</p>
+                <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink">
+                  <span>
+                    {viewing.requestedPlan} plan — {peso(viewing.planPrice)}/month
+                  </span>
+                  {statusBadge(viewing.status)}
+                </p>
+                <p className="mt-1 text-[11px] text-mut">
+                  Submitted {viewing.submittedAt ? new Date(viewing.submittedAt).toLocaleString() : '—'}
+                  {viewing.reviewedAt && ` · Reviewed ${new Date(viewing.reviewedAt).toLocaleString()}`}
+                </p>
+                {viewing.notes && <p className="mt-1 text-xs text-ink">Admin note: {viewing.notes}</p>}
+              </div>
+              <a
+                href={viewing.receiptUrl}
+                download={`receipt-${viewing.landlordName.replace(/\s+/g, '-').toLowerCase()}-${viewing.requestedPlan}.jpg`}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-navy-700 transition hover:border-brand-300 hover:text-brand-600"
+              >
+                <Download size={14} /> Download
+              </a>
+            </div>
+
+            <div className="max-h-[65vh] overflow-auto rounded-xl bg-surface p-2 ring-1 ring-slate-200">
+              <img
+                src={viewing.receiptUrl}
+                alt={`Proof of payment from ${viewing.landlordName}`}
+                className="mx-auto w-full object-contain"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4">
+              {viewing.status === 'pending' ? (
+                <>
+                  <button
+                    onClick={() => {
+                      setReviewing(viewing)
+                      setViewing(null)
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600"
+                  >
+                    <Check size={15} /> Review this receipt
+                  </button>
+                  <p className="text-xs text-mut">Approving activates the landlord's plan right away.</p>
+                </>
+              ) : (
+                <p className="text-xs text-mut">
+                  This receipt is already {viewing.status} — the proof of payment stays viewable here for your records.
+                </p>
+              )}
+              <button
+                onClick={() => setViewing(null)}
+                className="ml-auto text-sm font-semibold text-mut transition hover:text-navy-800"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }
-
-import { cn } from '../../lib/utils'
