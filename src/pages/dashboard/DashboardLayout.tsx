@@ -26,8 +26,9 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../../lib/auth'
-import { deleteAccountAPI } from '../../lib/api'
+import { deleteAccountAPI, getSubscriptionReceipts } from '../../lib/api'
 import { showToast } from '../../components/boarder/HouseActions'
 import { useLandlordHouse } from '../../lib/landlordHouse'
 import { useMarkNotificationsRead, useNotifications } from '../../lib/hooks'
@@ -67,6 +68,11 @@ const NOTIF_ICON: Record<string, string> = {
   subscription: 'bg-mint-50 text-mint-600',
   message: 'bg-brand-50 text-brand-500',
 }
+
+/** Reviewed-receipt count the landlord last saw on Payment History — once
+ *  viewed the counter stays cleared (across pages) until the admin reviews
+ *  another of their receipts. */
+let seenReviewedReceipts = 0
 
 export default function DashboardLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -136,6 +142,28 @@ export default function DashboardLayout() {
   }
 
   const unread = notifications?.filter((n) => !n.read).length ?? 0
+
+  /* Payment History tab badge — counts subscription receipts the admin has
+     reviewed (approved or rejected) since the landlord last opened the page.
+     Polls every 15s; submitting/reviewing invalidates the same query key. */
+  const { data: historyReceipts } = useQuery({
+    queryKey: ['subscription-receipts', userId],
+    queryFn: () => getSubscriptionReceipts(userId!),
+    enabled: !!userId,
+    refetchInterval: 15000,
+  })
+  const reviewedCount = (historyReceipts ?? []).filter((r) => r.status !== 'pending').length
+  const [seenReviewed, setSeenReviewed] = useState(seenReviewedReceipts)
+  const viewingHistory = pathname.startsWith('/dashboard/subscription/history')
+
+  // Opening the tab counts as reading it — clear the badge for good.
+  useEffect(() => {
+    if (!viewingHistory) return
+    seenReviewedReceipts = reviewedCount
+    setSeenReviewed((s) => (s === reviewedCount ? s : reviewedCount))
+  }, [viewingHistory, reviewedCount])
+
+  const unseenReviewed = Math.max(0, reviewedCount - seenReviewed)
   const current = NAV.find((n) => (n.end ? pathname === n.path : pathname.startsWith(n.path))) ?? NAV[0]
 
   const closeMenu = () => setMobileOpen(false)
@@ -166,6 +194,14 @@ export default function DashboardLayout() {
             >
               <item.icon size={18} className={active ? 'text-brand-500' : 'text-mut group-hover:text-brand-500'} />
               {item.label}
+              {item.path === '/dashboard/subscription/history' && unseenReviewed > 0 && (
+                <span
+                  className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1.5 text-[10px] font-bold text-white"
+                  title={`${unseenReviewed} of your payment${unseenReviewed === 1 ? '' : 's'} was reviewed by the admin`}
+                >
+                  {unseenReviewed}
+                </span>
+              )}
             </Link>
           )
         })}

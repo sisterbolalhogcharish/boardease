@@ -184,7 +184,7 @@ export default function BoarderHome() {
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-[22px] bg-gradient-to-br from-mint-500 via-brand-500 to-navy-800 p-6 text-white shadow-card sm:p-8"
+        className="relative overflow-hidden rounded-[22px] bg-navy-800 p-6 text-white shadow-card sm:p-8"
       >
         <div className="hero-grid-bg absolute inset-0 opacity-40" />
         <div className="hero-blob -right-10 -top-10 h-48 w-48 bg-white/10" />

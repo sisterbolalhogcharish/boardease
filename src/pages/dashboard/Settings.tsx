@@ -9,6 +9,7 @@ import { useUpdateLandlordProfile, useUpdateProfile } from '../../lib/hooks'
 import { cn } from '../../lib/utils'
 import { showToast } from '../../components/boarder/HouseActions'
 import { ImageCropperModal } from '../../components/ImageCropperModal'
+import { useLandlordHouse } from '../../lib/landlordHouse'
 
 const TOGGLES = [
   { key: 'rentDue', label: 'Rent due reminders', desc: 'Notify 3 days before rent is due.' },
@@ -36,6 +37,10 @@ function downloadCSV(filename: string, rows: (string | number)[][], headers: str
 export default function Settings() {
   const { user, updateUser, logout } = useAuth()
   const { lang, setLang, t, languages } = useLanguage()
+  // Verification rides on the landlord's listing — the same flag the public
+  // house page and "My Boarding House" use.
+  const { house } = useLandlordHouse()
+  const verified = !!house?.verified
   const updateProfile = useUpdateProfile(user?.id?.toString())
   const updateLandlordProfile = useUpdateLandlordProfile(user?.id?.toString())
   const [saved, setSaved] = useState(false)
@@ -274,7 +279,18 @@ export default function Settings() {
                 className="h-16 w-16 rounded-full text-xl"
               />
               <div className="min-w-0 flex-1">
-                <p className="text-base font-bold text-navy-800">{user?.name ?? 'Landlord account'}</p>
+                <p className="flex flex-wrap items-center gap-2 text-base font-bold text-navy-800">
+                  {user?.name ?? 'Landlord account'}
+                  {verified ? (
+                    <span className="inline-flex -rotate-2 items-center gap-1 rounded-full bg-mint-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-mint-600 ring-1 ring-mint-200" title="This landlord profile is verified by BoardEase">
+                      <ShieldCheck size={12} strokeWidth={2.5} /> Verified
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-amber-soft ring-1 ring-amber-100" title="Verification pending">
+                      Pending verification
+                    </span>
+                  )}
+                </p>
                 <p className="mt-0.5 flex items-center gap-1.5 text-sm text-ink">
                   <Mail size={13} className="text-mut" /> {user?.email}
                 </p>

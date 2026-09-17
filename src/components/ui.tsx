@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { Building2, Loader2, Star, X } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { cn, initials } from '../lib/utils'
 
 /* ------------------------------------------------------------------ */
@@ -248,15 +248,44 @@ export function StatCard({
   loading?: boolean
 }) {
   const t = toneMap[tone]
+  // Clipped labels ("Expected inc…") scroll into view while hovered so the
+  // full wording stays readable. 0 means the label fits — no marquee.
+  const labelWrapRef = useRef<HTMLParagraphElement>(null)
+  const labelTextRef = useRef<HTMLSpanElement>(null)
+  const [marqueeShift, setMarqueeShift] = useState(0)
+
+  useLayoutEffect(() => {
+    const wrap = labelWrapRef.current
+    const text = labelTextRef.current
+    if (!wrap || !text) return
+    const measure = () => {
+      const overflow = text.offsetWidth - wrap.clientWidth
+      setMarqueeShift(overflow > 1 ? Math.ceil(overflow) : 0)
+    }
+    measure()
+    // Re-measure once webfonts finish loading — they change text width.
+    document.fonts?.ready.then(measure).catch(() => {})
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [label])
+
   return (
     <motion.div
       whileHover={{ y: -3 }}
       transition={{ type: 'spring', stiffness: 320, damping: 22 }}
-      className="rounded-[18px] border border-slate-100 bg-white p-5 shadow-card transition-shadow hover:shadow-card-hover"
+      className="group rounded-[18px] border border-slate-100 bg-white p-5 shadow-card transition-shadow hover:shadow-card-hover"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-[13px] font-medium text-mut">{label}</p>
+          <p ref={labelWrapRef} className={cn('truncate text-[13px] font-medium text-mut', marqueeShift > 0 && 'group-hover:text-clip')}>
+            <span
+              ref={labelTextRef}
+              className={cn('inline-block', marqueeShift > 0 && 'group-hover:animate-[hover-marquee_3s_ease-in-out_infinite]')}
+              style={marqueeShift > 0 ? ({ '--marquee-shift': `-${marqueeShift}px` }) as CSSProperties : undefined}
+            >
+              {label}
+            </span>
+          </p>
           {loading ? (
             <div className="mt-2 h-7 w-20 animate-pulse rounded-md bg-slate-100" />
           ) : (

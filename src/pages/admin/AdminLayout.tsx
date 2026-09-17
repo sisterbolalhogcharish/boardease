@@ -11,9 +11,11 @@ import {
   Shield,
   Users,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../../lib/auth'
+import { getAdminMessages, getAdminReceipts } from '../../lib/api'
 import { cn } from '../../lib/utils'
 import { Avatar } from '../../components/ui'
 
@@ -26,11 +28,57 @@ const NAV = [
   { path: '/admin/settings', label: 'Settings', icon: Settings },
 ]
 
+/** Counts the admin last saw — viewing a tab clears its counter (across
+ *  pages) until new activity pushes the count back up. */
+let seenPendingReceipts = 0
+let seenOpenMessages = 0
+
 export default function AdminLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const { user, logout } = useAuth()
+
+  /* New-subscription counter for the Payment Receipts tab. Polls every 15s
+     so a landlord subscribing shows up without a refresh; approving on the
+     receipts page invalidates the same query key and updates this too. */
+  const { data: pendingReceipts } = useQuery({
+    queryKey: ['admin-receipts', 'pending'],
+    queryFn: () => getAdminReceipts('pending'),
+    refetchInterval: 15000,
+  })
+  const pendingCount = pendingReceipts?.length ?? 0
+  const [seenReceipts, setSeenReceipts] = useState(seenPendingReceipts)
+  const viewingReceipts = pathname.startsWith('/admin/receipts')
+
+  // Opening the tab counts as reading it — clear the badge for good.
+  useEffect(() => {
+    if (!viewingReceipts) return
+    seenPendingReceipts = pendingCount
+    setSeenReceipts((s) => (s === pendingCount ? s : pendingCount))
+  }, [viewingReceipts, pendingCount])
+
+  const unseenReceipts = Math.max(0, pendingCount - seenReceipts)
+
+  /* Landlord Messages tab badge — counts unanswered messages, polled every
+     15s; replying on the messages page invalidates the same query key. */
+  const { data: adminMessages } = useQuery({
+    queryKey: ['admin-messages'],
+    queryFn: getAdminMessages,
+    refetchInterval: 15000,
+  })
+  const openMessages = (adminMessages ?? []).filter((m) => !m.reply).length
+  const [seenMessages, setSeenMessages] = useState(seenOpenMessages)
+  const viewingMessages = pathname.startsWith('/admin/messages')
+
+  // Opening the tab counts as reading it — clear the badge for good.
+  useEffect(() => {
+    if (!viewingMessages) return
+    seenOpenMessages = openMessages
+    setSeenMessages((s) => (s === openMessages ? s : openMessages))
+  }, [viewingMessages, openMessages])
+
+  const unseenMessages = Math.max(0, openMessages - seenMessages)
 
   const handleLogout = () => {
     logout()
@@ -42,11 +90,11 @@ export default function AdminLayout() {
 
   const Sidebar = (
     <div className="flex h-full flex-col bg-navy-900">
-      <div className="px-6 pb-2 pt-6">
+      <div className="border-b border-white/10 px-6 pb-4 pt-6">
         <Link to="/" className="inline-flex" aria-label="BoardEase home">
           <img src="/logo.png" alt="BoardEase" decoding="async" className="h-12 w-auto rounded-lg" />
         </Link>
-        <p className="mt-2 flex items-center gap-2 text-[10px] font-medium tracking-wide text-navy-300">
+        <p className="mt-3 flex items-center gap-2 text-[10px] font-medium tracking-wide text-navy-300">
           <Shield size={11} className="text-mint-400" /> Admin Console
         </p>
       </div>
@@ -68,6 +116,22 @@ export default function AdminLayout() {
             >
               <item.icon size={18} className={active ? '' : 'text-navy-300 group-hover:text-mint-300'} />
               {item.label}
+              {item.path === '/admin/receipts' && unseenReceipts > 0 && (
+                <span
+                  className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1.5 text-[10px] font-bold text-white"
+                  title={`${unseenReceipts} new subscription receipt${unseenReceipts === 1 ? '' : 's'} to review`}
+                >
+                  {unseenReceipts}
+                </span>
+              )}
+              {item.path === '/admin/messages' && unseenMessages > 0 && (
+                <span
+                  className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1.5 text-[10px] font-bold text-white"
+                  title={`${unseenMessages} new landlord message${unseenMessages === 1 ? '' : 's'} to answer`}
+                >
+                  {unseenMessages}
+                </span>
+              )}
             </Link>
           )
         })}
@@ -76,6 +140,7 @@ export default function AdminLayout() {
       <div className="border-t border-white/10 p-4">
         <div className="flex items-center gap-3 rounded-xl bg-white/5 p-3">
           <Avatar
+            src={user?.avatarUrl}
             name={user?.name ?? 'Admin'}
             color="#33C7A5"
             className="h-10 w-10 text-sm"

@@ -1,5 +1,6 @@
 import { Download, FileSpreadsheet, FileText, Printer } from 'lucide-react'
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { PaymentBadge, Skeleton } from '../../components/ui'
 import { useBoarders, useDashboard, usePaymentMonths, usePayments } from '../../lib/hooks'
 import { peso, prettyDate } from '../../lib/utils'
@@ -42,6 +43,21 @@ export default function Reports() {
       ['Name', 'Age', 'Gender', 'School', 'Course', 'Phone', 'Guardian', 'Room', 'Rent (PHP)', 'Move-in', 'Contract end'],
     )
 
+  /* PDF report — prints ONLY the report sheet (summary + selected period +
+     payment table), not the app UI (sidebar, buttons, etc.). The sheet is
+     rendered into #print-root, which the print stylesheet makes the only
+     visible element while #root is hidden. */
+  const [printing, setPrinting] = useState(false)
+
+  const printPdf = () => {
+    setPrinting(true)
+    // Let the report sheet paint before opening the print dialog.
+    setTimeout(() => {
+      window.print()
+      setPrinting(false)
+    }, 50)
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -66,7 +82,7 @@ export default function Reports() {
       {/* Export cards */}
       <div className="grid gap-4 sm:grid-cols-3">
         {[
-          { icon: FileText, title: 'Payment report (PDF)', desc: 'Print-ready summary of the selected period.', onClick: () => window.print(), accent: 'bg-brand-50 text-brand-500' },
+          { icon: FileText, title: 'Payment report (PDF)', desc: 'Print-ready summary of the selected period.', onClick: printPdf, accent: 'bg-brand-50 text-brand-500' },
           { icon: FileSpreadsheet, title: 'Payments (Excel)', desc: 'CSV export compatible with Excel & Google Sheets.', onClick: exportPayments, accent: 'bg-mint-50 text-mint-600' },
           { icon: FileSpreadsheet, title: 'Boarder list (Excel)', desc: 'All boarder records with contact & contract info.', onClick: exportBoarders, accent: 'bg-navy-50 text-navy-800' },
         ].map((c) => (
@@ -96,7 +112,7 @@ export default function Reports() {
             <h3 className="font-bold text-navy-800">Report preview — {currentLabel}</h3>
             <p className="text-xs text-mut">Sunset Boarding House · San Juan, Siquijor</p>
           </div>
-          <button onClick={exportPayments} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-navy-800 transition hover:border-brand-300 hover:text-brand-500">
+          <button onClick={printPdf} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-navy-800 transition hover:border-brand-300 hover:text-brand-500">
             <Printer size={14} /> Print / Save PDF
           </button>
         </div>
@@ -153,6 +169,62 @@ export default function Reports() {
           <p className="px-5 py-10 text-center text-sm text-ink">No payment records for this period.</p>
         )}
       </div>
+
+      {/* Print-only report sheet — lives outside #root so the print
+          stylesheet can exclude the entire app UI. Only this sheet is
+          printed when "Print / Save PDF" is clicked. */}
+      {printing &&
+        createPortal(
+          <div className="print-sheet" style={{ color: '#0b2d63' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '2px solid #0b2d63', paddingBottom: 8 }}>
+              <div>
+                <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>Payment Report</h1>
+                <p style={{ margin: '4px 0 0', fontSize: 12 }}>Sunset Boarding House · San Juan, Siquijor</p>
+              </div>
+              <div style={{ textAlign: 'right', fontSize: 12 }}>
+                <p style={{ margin: 0, fontWeight: 700 }}>Period: {currentLabel}</p>
+                <p style={{ margin: '4px 0 0' }}>Generated: {new Date().toLocaleDateString('en-US', { dateStyle: 'medium' })}</p>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginTop: 16 }}>
+              {[
+                { label: 'Collected', value: peso(collected), color: '#1a947a' },
+                { label: 'Outstanding', value: peso(outstanding), color: '#dc2626' },
+                { label: 'Occupancy', value: `${dashboard?.occupancyRate ?? 0}%`, color: '#0b2d63' },
+                { label: 'Active boarders', value: String(dashboard?.boarderCount ?? 0), color: '#0b2d63' },
+              ].map((s) => (
+                <div key={s.label} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 12px' }}>
+                  <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b' }}>{s.label}</p>
+                  <p style={{ margin: '4px 0 0', fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 20, fontSize: 12 }}>
+              <thead>
+                <tr style={{ textAlign: 'left', borderBottom: '2px solid #0b2d63' }}>
+                  {['Boarder', 'Period', 'Amount', 'Paid date', 'Method', 'Status'].map((h) => (
+                    <th key={h} style={{ padding: '8px 6px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(payments ?? []).map((p) => (
+                  <tr key={p.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                    <td style={{ padding: '6px', fontWeight: 700 }}>{p.boarderName}</td>
+                    <td style={{ padding: '6px' }}>{p.label}</td>
+                    <td style={{ padding: '6px', fontWeight: 700 }}>{peso(p.amount)}</td>
+                    <td style={{ padding: '6px' }}>{p.paidDate ? prettyDate(p.paidDate) : '—'}</td>
+                    <td style={{ padding: '6px' }}>{p.method ?? '—'}</td>
+                    <td style={{ padding: '6px', textTransform: 'capitalize' }}>{p.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>,
+          document.getElementById('print-root')!,
+        )}
     </div>
   )
 }
