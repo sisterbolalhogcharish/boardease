@@ -190,6 +190,21 @@ export default function HouseDetails() {
                 <p className="mt-3 leading-relaxed text-ink">{house.description}</p>
               </Reveal>
 
+              {/* Walkthrough videos */}
+              {house.videos && house.videos.length > 0 && (
+                <Reveal className="mt-10">
+                  <h2 className="text-xl font-bold text-navy-800">Video walkthrough</h2>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    {house.videos.map((video, i) => (
+                      <div key={video.url + i}>
+                        <video src={video.url} controls preload="metadata" className="aspect-video w-full rounded-2xl bg-navy-950 object-contain shadow-card" />
+                        {video.title && <p className="mt-2 text-sm font-semibold text-navy-800">{video.title}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </Reveal>
+              )}
+
               {/* Amenities */}
               <Reveal className="mt-10">
                 <h2 className="text-xl font-bold text-navy-800">What this place offers</h2>
@@ -231,14 +246,18 @@ export default function HouseDetails() {
                           )}
                         >
                           <div className="flex items-center gap-3">
-                            <span
-                              className={cn(
-                                'flex h-10 w-10 items-center justify-center rounded-xl',
-                                room.available > 0 ? 'bg-mint-100 text-mint-600' : 'bg-slate-100 text-slate-400',
-                              )}
-                            >
-                              <BedDouble size={18} />
-                            </span>
+                            {room.photo ? (
+                              <img src={room.photo} alt={`Room ${room.roomNo}`} className="h-12 w-16 rounded-xl object-cover" />
+                            ) : (
+                              <span
+                                className={cn(
+                                  'flex h-10 w-10 items-center justify-center rounded-xl',
+                                  room.available > 0 ? 'bg-mint-100 text-mint-600' : 'bg-slate-100 text-slate-400',
+                                )}
+                              >
+                                <BedDouble size={18} />
+                              </span>
+                            )}
                             <div>
                               <p className="text-sm font-bold text-navy-800">
                                 Room {room.roomNo} · <span className="capitalize">{room.type}</span>
@@ -248,6 +267,15 @@ export default function HouseDetails() {
                                 {room.gender === 'mixed' ? 'Mixed' : room.gender === 'female' ? 'Female only' : 'Male only'}
                                 {room.aircon ? ' · aircon' : ''}
                               </p>
+                              {room.needs && room.needs.length > 0 && (
+                                <p className="mt-1 flex flex-wrap gap-1">
+                                  {room.needs.map((need) => (
+                                    <span key={need} className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-navy-700 ring-1 ring-slate-200">
+                                      {need}
+                                    </span>
+                                  ))}
+                                </p>
+                              )}
                             </div>
                           </div>
                           <span
@@ -399,12 +427,27 @@ export default function HouseDetails() {
                 </div>
 
                 <div className="mt-5 flex items-center gap-3">
-                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-navy-800 to-navy-600 text-sm font-bold text-white">
-                    {house.ownerInitials}
+                  <span className="relative inline-flex shrink-0">
+                    {house.ownerAvatarUrl ? (
+                      <img
+                        src={house.ownerAvatarUrl}
+                        alt={house.owner}
+                        className="h-12 w-12 rounded-full object-cover ring-2 ring-white"
+                      />
+                    ) : (
+                      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-navy-800 to-navy-600 text-sm font-bold text-white ring-2 ring-white">
+                        {house.ownerInitials}
+                      </span>
+                    )}
+                    <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-brand-500 ring-2 ring-white">
+                      <BadgeCheck size={13} className="text-white" />
+                    </span>
                   </span>
                   <div>
                     <p className="text-sm font-bold text-navy-800">{house.owner}</p>
-                    <p className="text-xs text-mut">Verified landlord</p>
+                    <p className="flex items-center gap-1 text-xs text-mut">
+                      Verified landlord <BadgeCheck size={12} className="text-brand-500" />
+                    </p>
                   </div>
                 </div>
 

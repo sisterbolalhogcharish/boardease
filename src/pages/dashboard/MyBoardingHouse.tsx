@@ -12,19 +12,21 @@ import {
   Lock,
   MapPin,
   Pencil,
-  Repeat,
   Plus,
+  Repeat,
   Save,
   Star,
   Trash2,
   Upload,
+  Video,
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { HouseImage, Spinner } from '../../components/ui'
+import { HouseImage, Modal, Spinner } from '../../components/ui'
 import { ImageCropperModal } from '../../components/ImageCropperModal'
 import { useLandlordHouse } from '../../lib/landlordHouse'
+import { getLandlordHouse, updateLandlordHouseVideo, type LandlordHouseInput } from '../../lib/api'
 import {
   useAddLandlordHouseImages,
   useAddRoom,
@@ -35,10 +37,11 @@ import {
   useRooms,
   useSaveLandlordHouse,
   useUpdateLandlordHouseImage,
+  useAddLandlordHouseVideos,
+  useDeleteLandlordHouseVideo,
   useUpdateRoom,
 } from '../../lib/hooks'
 import { usePlanFeatures } from '../../components/dashboard/PlanGate'
-import type { LandlordHouseInput } from '../../lib/api'
 import type { Room } from '../../server/types'
 import { cn, peso } from '../../lib/utils'
 
@@ -47,6 +50,8 @@ import { cn, peso } from '../../lib/utils'
 /* ------------------------------------------------------------------ */
 const IMAGE_ACCEPT = 'image/jpeg,image/jpg,image/png,image/webp,.jpg,.jpeg,.png,.webp'
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024
+const VIDEO_ACCEPT = 'video/mp4,video/webm,video/ogg,video/quicktime,.mp4,.webm,.ogv,.mov'
+const MAX_VIDEO_BYTES = 48 * 1024 * 1024
 
 function isAllowedImage(file: File) {
   const type = file.type.toLowerCase()
@@ -61,6 +66,23 @@ function validateImageFile(file: File) {
   }
   if (file.size > MAX_IMAGE_BYTES) {
     return `${file.name} is larger than 4 MB.`
+  }
+  return ''
+}
+
+function isAllowedVideo(file: File) {
+  const type = file.type.toLowerCase()
+  const byMime = ['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime'].includes(type)
+  const byExt = /\.(mp4|webm|ogv|ogg|mov)$/i.test(file.name)
+  return byMime || byExt
+}
+
+function validateVideoFile(file: File) {
+  if (!isAllowedVideo(file)) {
+    return 'Please upload an MP4, WebM, OGG, or MOV video.'
+  }
+  if (file.size > MAX_VIDEO_BYTES) {
+    return `${file.name} is larger than 48 MB.`
   }
   return ''
 }
@@ -118,6 +140,8 @@ interface RoomForm {
   monthlyRent: string
   gender: string
   aircon: boolean
+  photo: string
+  needs: string[]
 }
 
 const EMPTY_ROOM: RoomForm = {
@@ -127,6 +151,8 @@ const EMPTY_ROOM: RoomForm = {
   monthlyRent: '',
   gender: 'mixed',
   aircon: false,
+  photo: '',
+  needs: [],
 }
 
 const ROOM_TYPES = ['bedspace', 'single', 'double', 'studio']
@@ -154,6 +180,47 @@ const EMPTY_FORM: FormState = {
   parking: false,
   petFriendly: false,
 }
+
+/* ------------------------------------------------------------------ */
+/*  Staged edits — nothing below touches the server until "Save        */
+/*  changes" is pressed, so the public listing only ever changes when  */
+/*  the landlord says so.                                              */
+/* ------------------------------------------------------------------ */
+
+/** One gallery photo as shown on screen. Saved photos keep their server id
+ *  and `url`; freshly picked ones only have the cropped `dataUrl` until the
+ *  save assigns them a real row (ids starting with "new-"). */
+interface StagedPhoto {
+  id: string
+  url?: string
+  dataUrl?: string
+}
+
+/** One walkthrough video as shown on screen — same staging idea as photos:
+ *  saved videos keep their server id + `url`; freshly picked ones only have
+ *  the `dataUrl` until the save assigns them a real row (ids "new-"). */
+interface StagedVideo {
+  id: string
+  url?: string
+  title: string
+  dataUrl?: string
+}
+
+const isNewPhotoId = (id: string) => id.startsWith('new-')
+const isNewPhoto = (photo: StagedPhoto) => isNewPhotoId(photo.id)
+const isNewVideo = (video: StagedVideo) => video.id.startsWith('new-')
+const isNewVideoId = (id: string) => id.startsWith('new-')
+
+/** Read any picked file (video or image) as a data URL for staging/upload. */
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(new Error('read failed'))
+    reader.readAsDataURL(file)
+  })
+}
+const isNewRoom = (room: Room) => room.id.startsWith('local-')
 
 /* ------------------------------------------------------------------ */
 /*  Small building blocks                                              */
@@ -280,22 +347,58 @@ export default function MyBoardingHouse() {
   const reorderImages = useReorderLandlordHouseImages()
   const deleteImage = useDeleteLandlordHouseImage()
   const updateImage = useUpdateLandlordHouseImage()
+  const addVideos = useAddLandlordHouseVideos()
+  const deleteVideo = useDeleteLandlordHouseVideo()
 
   // Rooms are what make "available" real: beds free = SUM(capacity) - SUM(occupied).
-  const { data: rooms } = useRooms()
+  // Server rooms are only the seed — edits below are staged until save.
+  const { data: serverRooms, refetch: refetchRooms } = useRooms()
   const addRoom = useAddRoom()
   const updateRoom = useUpdateRoom()
   const deleteRoom = useDeleteRoom()
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const videoInputRef = useRef<HTMLInputElement>(null)
   /** Photo picked for the crop step; null when no crop is in progress. The
-   *  id of the gallery photo being replaced travels alongside, if any. */
+   *  staged photo being replaced travels alongside, if any. */
   const [cropFile, setCropFile] = useState<File | null>(null)
-  const [replaceImageId, setReplaceImageId] = useState<string | null>(null)
+  const [replacePhotoId, setReplacePhotoId] = useState<string | null>(null)
+  /** Video being picked/renamed — drives the little video meta modal. */
+  const [videoPick, setVideoPick] = useState<{ file: File; title: string } | null>(null)
+  const [renameVideoId, setRenameVideoId] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  /** The "Your changes are live" pop-up after a successful save. */
+  const [showSavedModal, setShowSavedModal] = useState(false)
+
+  // Staged gallery + rooms. Seeded from the server once, then edited purely
+  // locally — the server only sees them when "Save changes" runs.
+  const [photos, setPhotos] = useState<StagedPhoto[]>([])
+  const [videos, setVideos] = useState<StagedVideo[]>([])
+  const [rooms, setRooms] = useState<Room[]>([])
+  const [hasStagedEdits, setHasStagedEdits] = useState(false)
+  const photosDirty = useRef(false)
+  const videosDirty = useRef(false)
+  const roomsDirty = useRef(false)
+  const removedPhotoIds = useRef<string[]>([])
+  const removedRoomIds = useRef<string[]>([])
+  /** Server videos touched since the last save. */
+  const removedVideoIds = useRef<string[]>([])
+  const renamedVideoTitles = useRef<Map<string, string>>(new Map())
+  const uploadedVideoUrls = useRef<Set<string>>(new Set())
+  /** Server rooms touched since the last save — only these are PUT on save. */
+  const editedRoomIds = useRef<Set<string>>(new Set())
+  /** Progress trackers so retrying a save that failed half-way never
+   *  double-uploads a photo or re-adds a room that already landed. */
+  const replacedPhotoIds = useRef<Set<string>>(new Set())
+  const uploadedPhotoUrls = useRef<Set<string>>(new Set())
+  const addedRoomIds = useRef<Set<string>>(new Set())
+  const localPhotoSeq = useRef(0)
+  const localVideoSeq = useRef(0)
+  const localRoomSeq = useRef(0)
 
   // Rooms
   const [roomOpen, setRoomOpen] = useState(false)
@@ -345,6 +448,25 @@ export default function MyBoardingHouse() {
     }
   }, [house, suggested, loading])
 
+  // Mirror the server gallery into the staged list — but never while there
+  // are unsaved photo edits, and re-sync again after a save lands.
+  useEffect(() => {
+    if (photosDirty.current) return
+    setPhotos((house?.images ?? []).map((i) => ({ id: i.id, url: i.url })))
+  }, [house?.images])
+
+  // Same mirror for walkthrough videos.
+  useEffect(() => {
+    if (videosDirty.current) return
+    setVideos((house?.videos ?? []).map((v) => ({ id: v.id, url: v.url, title: v.title })))
+  }, [house?.videos])
+
+  // Same idea for rooms: follow the server unless edits are pending.
+  useEffect(() => {
+    if (roomsDirty.current) return
+    setRooms((serverRooms ?? []).map((r) => ({ ...r })))
+  }, [serverRooms])
+
   const set = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))
   }, [])
@@ -358,6 +480,8 @@ export default function MyBoardingHouse() {
     const match = (locations ?? []).find((l) => l.municipality === form.municipality)
     return match?.barangays ?? []
   }, [locations, form.municipality])
+
+  /* ------------------------ Save (everything) ------------------------ */
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -397,13 +521,174 @@ export default function MyBoardingHouse() {
       petFriendly: form.petFriendly,
     }
 
+    setSaving(true)
     try {
+      // 1) Listing details — also creates the house on first save, which the
+      //    photo and room steps below depend on.
       await saveHouse.mutateAsync(payload)
-      setNotice(house ? 'Boarding house updated. Your public listing is live.' : 'Boarding house created. It is now listed in Explore.')
+
+      // The house id every owner-scoped endpoint resolves against. After a
+      // create it only exists once the server confirms.
+      let houseId = house?.id ?? null
+      if (!houseId) {
+        const fresh = await getLandlordHouse(userId)
+        houseId = fresh.house?.id ?? null
+      }
+      if (!houseId) throw new Error('Could not confirm your boarding house was saved.')
+
+      // 2) Photos: removals, replacements, additions, then one reorder that
+      //    puts the gallery in exactly the order shown on screen. Each step
+      //    records its progress, so a retry after a mid-way failure never
+      //    re-deletes or double-uploads.
+      if (photosDirty.current) {
+        for (const imageId of [...removedPhotoIds.current]) {
+          try {
+            await deleteImage.mutateAsync({ userId, imageId })
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : ''
+            // Already gone server-side (e.g. the previous attempt deleted it
+            // before failing later on) — treat as done.
+            if (!msg.includes('not part of your boarding house')) throw err
+          }
+          removedPhotoIds.current = removedPhotoIds.current.filter((id) => id !== imageId)
+        }
+        for (const photo of photos) {
+          if (photo.dataUrl && !isNewPhoto(photo) && !replacedPhotoIds.current.has(photo.id)) {
+            // Renovation flow — overwrite in place, keeping its position and
+            // the cover, if it was the cover.
+            await updateImage.mutateAsync({ userId, imageId: photo.id, image: photo.dataUrl })
+            replacedPhotoIds.current.add(photo.id)
+          }
+        }
+        for (const photo of photos) {
+          if (isNewPhoto(photo) && photo.dataUrl && !uploadedPhotoUrls.current.has(photo.dataUrl)) {
+            await addImages.mutateAsync({ userId, images: [photo.dataUrl] })
+            uploadedPhotoUrls.current.add(photo.dataUrl)
+          }
+        }
+        // Always finish with one reorder, so the stored order matches the
+        // screen exactly — including reorder-only edits (moves, new cover).
+        const fresh = await getLandlordHouse(userId)
+        const kept = fresh.house?.images ?? []
+        const used = new Set<string>()
+        const serverIdFor = (dataUrl: string) =>
+          kept.find((i) => i.url === dataUrl && !used.has(i.id))?.id
+        const orderedIds = photos
+          .map((p) => {
+            if (!isNewPhoto(p)) return p.id
+            const id = serverIdFor(p.dataUrl ?? '')
+            if (id) used.add(id)
+            return id
+          })
+          .filter((id): id is string => typeof id === 'string')
+        if (orderedIds.length === photos.length && orderedIds.length > 0) {
+          await reorderImages.mutateAsync({ userId, ids: orderedIds })
+        }
+        // Adopt the server rows (real ids + urls) as the new staged list.
+        photosDirty.current = false
+        replacedPhotoIds.current.clear()
+        uploadedPhotoUrls.current.clear()
+        setPhotos(kept.map((i) => ({ id: i.id, url: i.url })))
+      }
+
+      // 3) Videos: removals, renames, additions — then adopt server rows.
+      if (videosDirty.current) {
+        for (const videoId of [...removedVideoIds.current]) {
+          try {
+            await deleteVideo.mutateAsync({ userId, videoId })
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : ''
+            if (!msg.includes('not part of your boarding house')) throw err
+          }
+          removedVideoIds.current = removedVideoIds.current.filter((id) => id !== videoId)
+        }
+        for (const [videoId, title] of renamedVideoTitles.current) {
+          if (videos.some((v) => v.id === videoId)) {
+            await updateLandlordHouseVideo(userId, videoId, title)
+          }
+        }
+        for (const video of videos) {
+          if (isNewVideo(video) && video.dataUrl && !uploadedVideoUrls.current.has(video.dataUrl)) {
+            await addVideos.mutateAsync({ userId, videos: [{ dataUrl: video.dataUrl, title: video.title }] })
+            uploadedVideoUrls.current.add(video.dataUrl)
+          }
+        }
+        const freshHouse = await getLandlordHouse(userId)
+        const keptVideos = freshHouse.house?.videos ?? []
+        videosDirty.current = false
+        renamedVideoTitles.current.clear()
+        uploadedVideoUrls.current.clear()
+        setVideos(keptVideos.map((v) => ({ id: v.id, url: v.url, title: v.title })))
+      }
+
+      // 4) Rooms: updates (idempotent), then additions, then removals — each
+      //    tracked so a retry after a partial failure can't duplicate rows.
+      if (roomsDirty.current) {
+        for (const room of rooms) {
+          // Only rooms actually edited since the last save are PUT — an edit
+          // that was later reverted would otherwise still be written.
+          if (isNewRoom(room) || !editedRoomIds.current.has(room.id)) continue
+          await updateRoom.mutateAsync({
+            id: room.id,
+            patch: {
+              roomNo: room.roomNo,
+              type: room.type,
+              capacity: room.capacity,
+              monthlyRent: room.monthlyRent,
+              gender: room.gender,
+              aircon: room.aircon,
+              photo: room.photo ?? '',
+              needs: room.needs ?? [],
+            },
+          })
+        }
+        for (const room of rooms) {
+          if (!isNewRoom(room) || addedRoomIds.current.has(room.id)) continue
+          await addRoom.mutateAsync({
+            userId,
+            roomNo: room.roomNo,
+            type: room.type,
+            capacity: room.capacity,
+            monthlyRent: room.monthlyRent,
+            gender: room.gender,
+            aircon: room.aircon,
+            photo: room.photo ?? '',
+            needs: room.needs ?? [],
+          })
+          addedRoomIds.current.add(room.id)
+        }
+        for (const roomId of [...removedRoomIds.current]) {
+          try {
+            await deleteRoom.mutateAsync(roomId)
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : ''
+            if (!msg.includes('Room not found')) throw err
+          }
+        }
+        // Adopt the server rows so staged rooms carry their real ids.
+        const freshRooms = await refetchRooms()
+        roomsDirty.current = false
+        editedRoomIds.current.clear()
+        addedRoomIds.current.clear()
+        removedRoomIds.current = []
+        setRooms((freshRooms.data ?? []).map((r) => ({ ...r })))
+      }
+
+      setHasStagedEdits(false)
+      setNotice(
+        house
+          ? 'All changes saved. Your public listing is up to date.'
+          : 'Boarding house published. It is now listed in Explore.',
+      )
+      setShowSavedModal(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save your boarding house.')
+    } finally {
+      setSaving(false)
     }
   }
+
+  /* -------------------- Staged photo interactions -------------------- */
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -415,85 +700,135 @@ export default function MyBoardingHouse() {
       return
     }
     setError('')
-    setNotice('')
     // Hand off to the crop step (4:3 — the ratio of the public listing cards,
-    // so the picture is shown in full on Explore). Upload happens on Apply.
-    // `replaceImageId` is deliberately left alone: handleReplace sets it
-    // before opening this picker, and the modal close/apply handlers clear it.
+    // so the picture is shown in full on Explore). The photo is only staged;
+    // the upload happens on "Save changes".
     setCropFile(files[0])
   }
 
   /** Plain "add" entry point — clears any pending replace so a cancelled
    *  replace can never turn the next upload into an accidental overwrite. */
   const openAddPhoto = () => {
-    setReplaceImageId(null)
+    setReplacePhotoId(null)
     fileInputRef.current?.click()
   }
 
-  const handleReplace = (imageId: string) => {
+  const handleReplace = (photoId: string) => {
     setError('')
-    setNotice('')
-    setReplaceImageId(imageId)
+    setReplacePhotoId(photoId)
     fileInputRef.current?.click()
   }
 
-  const applyCroppedImage = async (dataUrl: string) => {
-    if (!userId) return
-    setUploading(true)
-    try {
-      if (replaceImageId) {
-        // Renovation flow: overwrite the old photo in place, keeping its
-        // position (and the cover, if it was the cover).
-        await updateImage.mutateAsync({ userId, imageId: replaceImageId, image: dataUrl })
-        setNotice('Photo replaced.')
-      } else {
-        await addImages.mutateAsync({ userId, images: [dataUrl] })
-        setNotice('Photo added.')
-      }
-      setCropFile(null)
-      setReplaceImageId(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save that photo.')
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  const reorder = async (ids: string[]) => {
-    if (!userId) return
+  /** Crop applied — swap or append purely in local state. */
+  const applyCroppedImage = (dataUrl: string) => {
     setError('')
-    try {
-      await reorderImages.mutateAsync({ userId, ids })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not reorder photos.')
+    if (replacePhotoId) {
+      // Renovation flow: overwrite the old photo in place, keeping its
+      // position (and the cover, if it was the cover).
+      setPhotos((prev) => prev.map((p) => (p.id === replacePhotoId ? { ...p, dataUrl } : p)))
+    } else {
+      setPhotos((prev) =>
+        prev.some((p) => p.dataUrl === dataUrl)
+          ? prev
+          : [...prev, { id: `new-${++localPhotoSeq.current}`, dataUrl }],
+      )
     }
+    photosDirty.current = true
+    setHasStagedEdits(true)
+    setCropFile(null)
+    setReplacePhotoId(null)
   }
 
   const moveImage = (index: number, direction: -1 | 1) => {
-    if (!house) return
-    const ids = house.images.map((i) => i.id)
-    const target = index + direction
-    if (target < 0 || target >= ids.length) return
-    ;[ids[index], ids[target]] = [ids[target], ids[index]]
-    void reorder(ids)
+    setPhotos((prev) => {
+      const target = index + direction
+      if (target < 0 || target >= prev.length) return prev
+      const next = [...prev]
+      ;[next[index], next[target]] = [next[target], next[index]]
+      return next
+    })
+    photosDirty.current = true
+    setHasStagedEdits(true)
   }
 
-  const makeCover = (id: string) => {
-    if (!house) return
-    void reorder([id, ...house.images.filter((i) => i.id !== id).map((i) => i.id)])
+  const makeCover = (photoId: string) => {
+    setPhotos((prev) => {
+      const photo = prev.find((p) => p.id === photoId)
+      if (!photo) return prev
+      return [photo, ...prev.filter((p) => p.id !== photoId)]
+    })
+    photosDirty.current = true
+    setHasStagedEdits(true)
   }
 
-  const removeImage = async (id: string) => {
-    if (!userId) return
-    setError('')
-    try {
-      await deleteImage.mutateAsync({ userId, imageId: id })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove that photo.')
+  const removePhoto = (photoId: string) => {
+    setPhotos((prev) => prev.filter((p) => p.id !== photoId))
+    photosDirty.current = true
+    setHasStagedEdits(true)
+    if (!isNewPhotoId(photoId)) removedPhotoIds.current.push(photoId)
+  }
+
+  /* -------------------- Staged video interactions -------------------- */
+
+  const handleVideoPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    const file = files[0]
+    if (!file) return
+    const problem = validateVideoFile(file)
+    if (problem) {
+      setError(problem)
+      return
     }
+    setError('')
+    // Ask for a title in a tiny modal; the video is only staged on confirm.
+    setVideoPick({ file, title: '' })
   }
 
-  /* ---------------------------- Rooms ---------------------------- */
+  const confirmVideoPick = () => {
+    if (!videoPick) return
+    void (async () => {
+      setError('')
+      try {
+        const dataUrl = await fileToDataUrl(videoPick.file)
+        setVideos((prev) =>
+          prev.some((v) => v.dataUrl === dataUrl)
+            ? prev
+            : [...prev, { id: `new-${++localVideoSeq.current}`, dataUrl, title: videoPick.title.trim() }],
+        )
+        videosDirty.current = true
+        setHasStagedEdits(true)
+        setVideoPick(null)
+      } catch {
+        setError('Could not read that video file. Please try again.')
+      }
+    })()
+  }
+
+  const renameVideo = (video: StagedVideo) => {
+    setRenameVideoId(video.id)
+    setRenameDraft(video.pendingTitle ?? video.title)
+  }
+
+  const confirmVideoRename = () => {
+    if (!renameVideoId) return
+    const title = renameDraft.trim()
+    setVideos((prev) => prev.map((v) => (v.id === renameVideoId ? { ...v, title } : v)))
+    if (!isNewVideoId(renameVideoId)) renamedVideoTitles.current.set(renameVideoId, title)
+    videosDirty.current = true
+    setHasStagedEdits(true)
+    setRenameVideoId(null)
+    setRenameDraft('')
+  }
+
+  const removeVideo = (videoId: string) => {
+    setVideos((prev) => prev.filter((v) => v.id !== videoId))
+    videosDirty.current = true
+    setHasStagedEdits(true)
+    if (!isNewVideoId(videoId)) removedVideoIds.current.push(videoId)
+  }
+
+  /* ----------------------- Staged room edits ------------------------- */
 
   const openAddRoom = () => {
     setEditingRoom(null)
@@ -511,49 +846,65 @@ export default function MyBoardingHouse() {
       monthlyRent: String(room.monthlyRent),
       gender: room.gender,
       aircon: room.aircon,
+      photo: room.photo ?? '',
+      needs: room.needs ?? [],
     })
     setRoomError('')
     setRoomOpen(true)
   }
 
-  const submitRoom = async (e: React.FormEvent) => {
+  /** Adds/updates stay on-screen only — the room rows are written on save. */
+  const submitRoom = (e: React.FormEvent) => {
     e.preventDefault()
     setRoomError('')
     if (!roomForm.roomNo.trim()) {
       setRoomError('Please enter a room number.')
       return
     }
+    const duplicate = rooms.some(
+      (r) =>
+        r.id !== editingRoom?.id &&
+        r.roomNo.trim().toLowerCase() === roomForm.roomNo.trim().toLowerCase(),
+    )
+    if (duplicate) {
+      setRoomError(`Room ${roomForm.roomNo.trim()} already exists.`)
+      return
+    }
     // `occupied` is deliberately not editable — it follows the boarders actually
     // renting the room, which is what makes "available" trustworthy.
-    const payload = {
+    const values = {
       roomNo: roomForm.roomNo.trim(),
-      type: roomForm.type,
+      type: roomForm.type as Room['type'],
       capacity: Math.max(1, Number(roomForm.capacity) || 1),
       monthlyRent: Number(roomForm.monthlyRent.replace(/[^\d]/g, '')) || 0,
-      gender: roomForm.gender,
+      gender: roomForm.gender as Room['gender'],
       aircon: roomForm.aircon,
+      photo: roomForm.photo,
+      needs: roomForm.needs,
     }
-    try {
-      if (editingRoom) await updateRoom.mutateAsync({ id: editingRoom.id, patch: payload })
-      else await addRoom.mutateAsync(payload)
-      setRoomOpen(false)
-      setEditingRoom(null)
-      setRoomForm(EMPTY_ROOM)
-      setNotice(editingRoom ? 'Room updated.' : 'Room added.')
-    } catch (err) {
-      setRoomError(err instanceof Error ? err.message : 'Could not save that room.')
+    if (editingRoom) {
+      setRooms((prev) => prev.map((r) => (r.id === editingRoom.id ? { ...r, ...values } : r)))
+      if (!isNewRoom(editingRoom)) editedRoomIds.current.add(editingRoom.id)
+    } else {
+      setRooms((prev) => [
+        ...prev,
+        { id: `local-${++localRoomSeq.current}`, houseId: house?.id ?? '', occupied: 0, tenantIds: [], ...values },
+      ])
     }
+    roomsDirty.current = true
+    setHasStagedEdits(true)
+    setRoomOpen(false)
+    setEditingRoom(null)
+    setRoomForm(EMPTY_ROOM)
   }
 
-  const removeRoom = async (room: Room) => {
-    if (!window.confirm(`Remove room ${room.roomNo}? This cannot be undone.`)) return
+  const removeRoom = (room: Room) => {
+    if (!window.confirm(`Remove room ${room.roomNo}? It will be deleted when you save.`)) return
+    setRooms((prev) => prev.filter((r) => r.id !== room.id))
+    roomsDirty.current = true
+    setHasStagedEdits(true)
     setRoomError('')
-    try {
-      await deleteRoom.mutateAsync(room.id)
-      setNotice('Room removed.')
-    } catch (err) {
-      setRoomError(err instanceof Error ? err.message : 'Could not remove that room.')
-    }
+    if (!isNewRoom(room)) removedRoomIds.current.push(room.id)
   }
 
   if (loading) {
@@ -564,11 +915,10 @@ export default function MyBoardingHouse() {
     )
   }
 
-  const busy = saveHouse.isPending || reorderImages.isPending || deleteImage.isPending || uploading
-  const roomBusy = addRoom.isPending || updateRoom.isPending || deleteRoom.isPending
-  const gallery = house?.images ?? []
-  const totalBeds = (rooms ?? []).reduce((sum, r) => sum + r.capacity, 0)
-  const takenBeds = (rooms ?? []).reduce((sum, r) => sum + r.occupied, 0)
+  const busy = saving
+  const cover = photos[0]
+  const totalBeds = rooms.reduce((sum, r) => sum + r.capacity, 0)
+  const takenBeds = rooms.reduce((sum, r) => sum + r.occupied, 0)
   const freeBeds = Math.max(0, totalBeds - takenBeds)
   const unpublished = !!house && planKey === 'none'
 
@@ -582,8 +932,8 @@ export default function MyBoardingHouse() {
       >
         <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start sm:p-6">
           <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-navy-100 via-brand-100 to-mint-100">
-            {gallery[0] ? (
-              <HouseImage src={gallery[0].url} alt="Listing cover" className="h-full w-full" />
+            {cover ? (
+              <HouseImage src={cover.dataUrl ?? cover.url ?? ''} alt="Listing cover" className="h-full w-full" />
             ) : (
               <Building2 className="h-7 w-7 text-navy-300" />
             )}
@@ -614,7 +964,7 @@ export default function MyBoardingHouse() {
             </div>
             <p className="mt-1 text-sm text-ink">
               {house
-                ? `${house.barangay}, ${house.municipality} · ${gallery.length} photo${gallery.length === 1 ? '' : 's'}${totalBeds > 0 ? ` · ${freeBeds} of ${totalBeds} beds free` : ''}`
+                ? `${house.barangay}, ${house.municipality} · ${photos.length} photo${photos.length === 1 ? '' : 's'}${totalBeds > 0 ? ` · ${freeBeds} of ${totalBeds} beds free` : ''}`
                 : 'Fill in the details below. They are exactly what boarders see when they browse BoardEase.'}
             </p>
             {house && house.rating > 0 && (
@@ -913,10 +1263,10 @@ export default function MyBoardingHouse() {
           </div>
         </Card>
 
-        {/* -------- Photos -------- */}
+        {/* -------- Photos (staged until save) -------- */}
         <Card
           title="Photos"
-          subtitle="The first photo is your listing cover. JPG, PNG, or WebP, up to 4 MB each."
+          subtitle="The first photo is your listing cover. JPG, PNG, or WebP, up to 4 MB each. Photos upload when you save."
         >
           <input
             ref={fileInputRef}
@@ -931,47 +1281,53 @@ export default function MyBoardingHouse() {
           <ImageCropperModal
             file={cropFile}
             open={cropFile !== null}
-            busy={uploading}
             aspect={4 / 3}
             outputWidth={960}
             quality={0.82}
-            title={replaceImageId ? 'Replace photo' : 'Crop your photo'}
-            hint={replaceImageId ? 'Position the new photo — it will take this photo\u2019s place.' : undefined}
+            title={replacePhotoId ? 'Replace photo' : 'Crop your photo'}
+            hint={replacePhotoId ? 'Position the new photo — it will take this photo\u2019s place.' : undefined}
             onClose={() => {
               setCropFile(null)
-              setReplaceImageId(null)
+              setReplacePhotoId(null)
             }}
             onApply={applyCroppedImage}
           />
 
-          {gallery.length === 0 ? (
+          {photos.length === 0 ? (
             <button
               type="button"
               onClick={openAddPhoto}
-              disabled={uploading}
+              disabled={busy}
               className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 bg-surface px-4 py-10 text-center transition hover:border-brand-300 hover:bg-brand-50/40 disabled:opacity-60"
             >
               <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-navy-500 shadow-sm">
-                {uploading ? <Spinner className="h-5 w-5 text-brand-500" /> : <Upload size={20} />}
+                <Upload size={20} />
               </span>
-              <span className="text-sm font-semibold text-navy-800">
-                {uploading ? 'Uploading…' : 'Upload your first photo'}
-              </span>
+              <span className="text-sm font-semibold text-navy-800">Upload your first photo</span>
               <span className="text-xs text-mut">Listings with photos get far more enquiries.</span>
             </button>
           ) : (
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {gallery.map((image, index) => (
+                {photos.map((photo, index) => (
                   <motion.div
-                    key={image.id}
+                    key={photo.id}
                     layout
                     className="group relative overflow-hidden rounded-xl border border-slate-100 bg-surface"
                   >
-                    <HouseImage src={image.url} alt={`Photo ${index + 1}`} className="h-40 w-full" />
+                    {photo.dataUrl ? (
+                      <img src={photo.dataUrl} alt={`Photo ${index + 1}`} className="h-40 w-full object-cover" />
+                    ) : (
+                      <HouseImage src={photo.url ?? ''} alt={`Photo ${index + 1}`} className="h-40 w-full" />
+                    )}
                     {index === 0 && (
                       <span className="absolute left-2 top-2 rounded-full bg-navy-900/80 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur">
                         Cover
+                      </span>
+                    )}
+                    {isNewPhoto(photo) && (
+                      <span className="absolute right-2 top-2 rounded-full bg-brand-500/90 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur">
+                        New
                       </span>
                     )}
                     <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-navy-950/80 to-transparent p-2 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
@@ -988,7 +1344,7 @@ export default function MyBoardingHouse() {
                         <button
                           type="button"
                           onClick={() => moveImage(index, 1)}
-                          disabled={index === gallery.length - 1 || busy}
+                          disabled={index === photos.length - 1 || busy}
                           className="rounded-lg bg-white/90 p-1.5 text-navy-700 transition hover:bg-white disabled:opacity-40"
                           aria-label="Move photo later"
                         >
@@ -999,7 +1355,7 @@ export default function MyBoardingHouse() {
                         {index !== 0 && (
                           <button
                             type="button"
-                            onClick={() => makeCover(image.id)}
+                            onClick={() => makeCover(photo.id)}
                             disabled={busy}
                             className="rounded-lg bg-white/90 px-2.5 py-1.5 text-[11px] font-semibold text-navy-700 transition hover:bg-white disabled:opacity-40"
                           >
@@ -1008,7 +1364,7 @@ export default function MyBoardingHouse() {
                         )}
                         <button
                           type="button"
-                          onClick={() => handleReplace(image.id)}
+                          onClick={() => handleReplace(photo.id)}
                           disabled={busy}
                           className="flex items-center gap-1 rounded-lg bg-white/90 px-2.5 py-1.5 text-[11px] font-semibold text-navy-700 transition hover:bg-white disabled:opacity-40"
                           aria-label={`Replace photo ${index + 1}`}
@@ -1017,7 +1373,7 @@ export default function MyBoardingHouse() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => removeImage(image.id)}
+                          onClick={() => removePhoto(photo.id)}
                           disabled={busy}
                           className="rounded-lg bg-white/90 p-1.5 text-danger transition hover:bg-white disabled:opacity-40"
                           aria-label="Remove photo"
@@ -1032,36 +1388,106 @@ export default function MyBoardingHouse() {
                 <button
                   type="button"
                   onClick={openAddPhoto}
-                  disabled={uploading}
+                  disabled={busy}
                   className="flex h-40 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 bg-surface text-center transition hover:border-brand-300 hover:bg-brand-50/40 disabled:opacity-60"
                 >
-                  {uploading ? (
-                    <Spinner className="h-5 w-5 text-brand-500" />
-                  ) : (
-                    <>
-                      <ImageIcon size={20} className="text-navy-400" />
-                      <span className="text-xs font-semibold text-navy-700">Add photos</span>
-                    </>
-                  )}
+                  <ImageIcon size={20} className="text-navy-400" />
+                  <span className="text-xs font-semibold text-navy-700">Add photos</span>
                 </button>
               </div>
             </div>
           )}
         </Card>
 
-        {/* -------- Sticky-ish save bar -------- */}
+        {/* -------- Videos (staged until save) -------- */}
+        <Card
+          title="Videos"
+          subtitle="Short walkthrough clips boarders can play right on your listing. MP4, WebM, OGG, or MOV, up to 48 MB each. Videos upload when you save."
+        >
+          <input ref={videoInputRef} type="file" accept={VIDEO_ACCEPT} className="sr-only" onChange={handleVideoPick} />
+
+          {videos.length === 0 ? (
+            <button
+              type="button"
+              onClick={() => videoInputRef.current?.click()}
+              disabled={busy}
+              className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 bg-surface px-4 py-10 text-center transition hover:border-brand-300 hover:bg-brand-50/40 disabled:opacity-60"
+            >
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-navy-500 shadow-sm">
+                <Video size={20} />
+              </span>
+              <span className="text-sm font-semibold text-navy-800">Upload your first video</span>
+              <span className="text-xs text-mut">A 30-second room tour says more than ten photos.</span>
+            </button>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {videos.map((video) => (
+                <div key={video.id} className="overflow-hidden rounded-xl border border-slate-100 bg-surface">
+                  {isNewVideo(video) && video.dataUrl ? (
+                    <video src={video.dataUrl} controls className="h-44 w-full bg-navy-950 object-contain" />
+                  ) : (
+                    <video src={video.url} controls className="h-44 w-full bg-navy-950 object-contain" />
+                  )}
+                  <div className="flex items-center gap-2 px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-navy-800">
+                        {video.title || 'Untitled video'}
+                        {isNewVideo(video) && (
+                          <span className="ml-2 rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-600">
+                            New
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => renameVideo(video)}
+                      disabled={busy}
+                      className="rounded-lg p-2 text-navy-400 transition hover:bg-navy-50 hover:text-navy-800 disabled:opacity-40"
+                      aria-label="Rename video"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeVideo(video.id)}
+                      disabled={busy}
+                      className="rounded-lg p-2 text-navy-400 transition hover:bg-red-50 hover:text-danger disabled:opacity-40"
+                      aria-label="Remove video"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => videoInputRef.current?.click()}
+                disabled={busy}
+                className="flex h-44 min-h-44 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 bg-surface text-center transition hover:border-brand-300 hover:bg-brand-50/40 disabled:opacity-60"
+              >
+                <Video size={20} className="text-navy-400" />
+                <span className="text-xs font-semibold text-navy-700">Add video</span>
+              </button>
+            </div>
+          )}
+        </Card>
+
+        {/* -------- Save bar — the single point where everything publishes -------- */}
         <div className="flex flex-col gap-3 rounded-[18px] border border-slate-100 bg-white p-5 shadow-card sm:flex-row sm:items-center sm:justify-between sm:p-6">
           <p className="text-sm text-ink">
-            {house
-              ? 'Changes go live on the Explore page as soon as you save.'
-              : 'Saving creates your listing — it will appear in Explore right away.'}
+            {hasStagedEdits
+              ? 'You have unsaved changes — details, photos and rooms all go live together when you save.'
+              : house
+                ? 'Changes go live on the Explore page as soon as you save.'
+                : 'Saving creates your listing — it will appear in Explore right away.'}
           </p>
           <button
             type="submit"
             disabled={busy}
             className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-brand-500 px-6 py-3 text-sm font-bold text-white shadow-[0_10px_28px_rgb(30_115_232/0.35)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
           >
-            {saveHouse.isPending ? (
+            {saving ? (
               <>
                 <Spinner className="h-4 w-4" /> Saving…
               </>
@@ -1074,198 +1500,103 @@ export default function MyBoardingHouse() {
         </div>
       </form>
 
-      {/* -------- Rooms — kept outside the listing <form> so the two don't submit together -------- */}
+      {/* -------- Rooms — staged locally too, published by the same Save button -------- */}
       <Card
         title="Rooms & availability"
-        subtitle="Available beds are calculated from your rooms, so they always match reality — there's nothing to type in by hand."
+        subtitle="Available beds are calculated from your rooms, so they always match reality — there's nothing to type in by hand. Room edits save when you click Save changes."
       >
-        {!house ? (
-          <p className="rounded-xl border border-dashed border-slate-200 bg-surface px-4 py-8 text-center text-sm text-ink">
-            Save your boarding house first (above), then you can add its rooms here.
-          </p>
-        ) : (
-          <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-3">
-              {[
-                { label: 'Total beds', value: totalBeds, cls: 'text-navy-800' },
-                { label: 'Occupied', value: takenBeds, cls: 'text-brand-600' },
-                { label: 'Available now', value: freeBeds, cls: 'text-mint-600' },
-              ].map((stat) => (
-                <div key={stat.label} className="rounded-xl border border-slate-100 bg-surface px-4 py-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-mut">{stat.label}</p>
-                  <p className={cn('mt-0.5 text-xl font-bold', stat.cls)}>{stat.value}</p>
-                </div>
-              ))}
-            </div>
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[
+              { label: 'Total beds', value: totalBeds, cls: 'text-navy-800' },
+              { label: 'Occupied', value: takenBeds, cls: 'text-brand-600' },
+              { label: 'Available now', value: freeBeds, cls: 'text-mint-600' },
+            ].map((stat) => (
+              <div key={stat.label} className="rounded-xl border border-slate-100 bg-surface px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-mut">{stat.label}</p>
+                <p className={cn('mt-0.5 text-xl font-bold', stat.cls)}>{stat.value}</p>
+              </div>
+            ))}
+          </div>
 
-            {roomError && (
-              <p role="alert" className="rounded-xl border border-red-100 bg-red-50 px-4 py-2.5 text-sm font-medium text-danger">
-                {roomError}
-              </p>
-            )}
+          {roomError && (
+            <p role="alert" className="rounded-xl border border-red-100 bg-red-50 px-4 py-2.5 text-sm font-medium text-danger">
+              {roomError}
+            </p>
+          )}
 
-            {(rooms ?? []).length > 0 ? (
-              <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-100">
-                {(rooms ?? []).map((room) => {
-                  const free = Math.max(0, room.capacity - room.occupied)
-                  return (
-                    <li key={room.id} className="flex items-center gap-3 bg-white px-4 py-3">
+          {rooms.length > 0 ? (
+            <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-100">
+              {rooms.map((room) => {
+                const free = Math.max(0, room.capacity - room.occupied)
+                return (
+                  <li key={room.id} className="flex items-center gap-3 bg-white px-4 py-3">
+                    {room.photo ? (
+                      <img src={room.photo} alt={`Room ${room.roomNo}`} className="h-9 w-9 shrink-0 rounded-lg object-cover" />
+                    ) : (
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface text-navy-500">
                         <BedDouble size={16} />
                       </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-navy-800">
-                          Room {room.roomNo} <span className="font-normal capitalize text-mut">· {room.type}</span>
-                        </p>
-                        <p className="truncate text-xs text-mut">
-                          {room.occupied}/{room.capacity} occupied · {peso(room.monthlyRent)}/month · {room.gender}
-                          {room.aircon ? ' · aircon' : ''}
-                        </p>
-                      </div>
-                      <span
-                        className={cn(
-                          'shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold',
-                          free === 0 ? 'bg-red-50 text-danger' : 'bg-mint-50 text-mint-600',
-                        )}
-                      >
-                        {free === 0 ? 'Full' : `${free} free`}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => openEditRoom(room)}
-                        className="rounded-lg p-2 text-navy-400 transition hover:bg-navy-50 hover:text-navy-800"
-                        aria-label={`Edit room ${room.roomNo}`}
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeRoom(room)}
-                        disabled={roomBusy}
-                        className="rounded-lg p-2 text-navy-400 transition hover:bg-red-50 hover:text-danger disabled:opacity-40"
-                        aria-label={`Remove room ${room.roomNo}`}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-            ) : (
-              <p className="rounded-xl border border-dashed border-slate-200 bg-surface px-4 py-6 text-center text-sm text-ink">
-                No rooms yet. Until you add some, boarders will see this house as having no rooms available.
-              </p>
-            )}
-
-            {roomOpen ? (
-              <form onSubmit={submitRoom} className="space-y-4 rounded-xl border border-slate-100 bg-surface p-4">
-                <p className="text-sm font-bold text-navy-800">{editingRoom ? `Edit room ${editingRoom.roomNo}` : 'Add a room'}</p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Room number" required>
-                    <input
-                      value={roomForm.roomNo}
-                      onChange={(e) => setRoomForm((p) => ({ ...p, roomNo: e.target.value }))}
-                      placeholder="e.g. 101"
-                      className={inputCls}
-                    />
-                  </Field>
-                  <Field label="Room type">
-                    <select
-                      value={roomForm.type}
-                      onChange={(e) => setRoomForm((p) => ({ ...p, type: e.target.value }))}
-                      className={inputCls}
-                    >
-                      {ROOM_TYPES.map((t) => (
-                        <option key={t} value={t} className="capitalize">
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Capacity (beds)" hint="How many boarders fit in this room.">
-                    <input
-                      value={roomForm.capacity}
-                      onChange={(e) => setRoomForm((p) => ({ ...p, capacity: e.target.value }))}
-                      inputMode="numeric"
-                      placeholder="1"
-                      className={inputCls}
-                    />
-                  </Field>
-                  <Field label="Monthly rent (₱)" hint="Per boarder.">
-                    <input
-                      value={roomForm.monthlyRent}
-                      onChange={(e) => setRoomForm((p) => ({ ...p, monthlyRent: e.target.value }))}
-                      inputMode="numeric"
-                      placeholder="2500"
-                      className={inputCls}
-                    />
-                  </Field>
-                  <Field label="Gender policy">
-                    <select
-                      value={roomForm.gender}
-                      onChange={(e) => setRoomForm((p) => ({ ...p, gender: e.target.value }))}
-                      className={inputCls}
-                    >
-                      {ROOM_GENDERS.map((g) => (
-                        <option key={g} value={g} className="capitalize">
-                          {g}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <button
-                    type="button"
-                    onClick={() => setRoomForm((p) => ({ ...p, aircon: !p.aircon }))}
-                    aria-pressed={roomForm.aircon}
-                    className={cn(
-                      'mt-6 flex items-center gap-3 rounded-xl border px-4 py-2.5 text-left transition',
-                      roomForm.aircon ? 'border-mint-300 bg-mint-50/70' : 'border-slate-200 bg-white hover:border-brand-200',
                     )}
-                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-navy-800">
+                        Room {room.roomNo} <span className="font-normal capitalize text-mut">· {room.type}</span>
+                        {isNewRoom(room) && (
+                          <span className="ml-2 rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-600">
+                            New
+                          </span>
+                        )}
+                      </p>
+                      <p className="truncate text-xs text-mut">
+                        {room.occupied}/{room.capacity} occupied · {peso(room.monthlyRent)}/month · {room.gender}
+                        {room.aircon ? ' · aircon' : ''}
+                      </p>
+                    </div>
                     <span
                       className={cn(
-                        'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition',
-                        roomForm.aircon ? 'border-mint-400 bg-mint-400 text-white' : 'border-slate-300 bg-white',
+                        'shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold',
+                        free === 0 ? 'bg-red-50 text-danger' : 'bg-mint-50 text-mint-600',
                       )}
                     >
-                      {roomForm.aircon && <Check size={13} />}
+                      {free === 0 ? 'Full' : `${free} free`}
                     </span>
-                    <span className="text-sm font-semibold text-navy-800">Air-conditioned</span>
-                  </button>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    disabled={roomBusy}
-                    className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600 disabled:opacity-60"
-                  >
-                    {roomBusy && <Spinner className="h-4 w-4" />}
-                    {editingRoom ? 'Save room' : 'Add room'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRoomOpen(false)
-                      setEditingRoom(null)
-                      setRoomError('')
-                    }}
-                    className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-navy-700 transition hover:bg-white"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <button
-                type="button"
-                onClick={openAddRoom}
-                className="inline-flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-5 py-2.5 text-sm font-semibold text-brand-600 transition hover:bg-brand-100"
-              >
-                <Plus size={15} /> Add a room
-              </button>
-            )}
-          </div>
-        )}
+                    <button
+                      type="button"
+                      onClick={() => openEditRoom(room)}
+                      disabled={saving}
+                      className="rounded-lg p-2 text-navy-400 transition hover:bg-navy-50 hover:text-navy-800 disabled:opacity-40"
+                      aria-label={`Edit room ${room.roomNo}`}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeRoom(room)}
+                      disabled={saving}
+                      className="rounded-lg p-2 text-navy-400 transition hover:bg-red-50 hover:text-danger disabled:opacity-40"
+                      aria-label={`Remove room ${room.roomNo}`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : (
+            <p className="rounded-xl border border-dashed border-slate-200 bg-surface px-4 py-6 text-center text-sm text-ink">
+              No rooms yet. Until you add some, boarders will see this house as having no rooms available.
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={openAddRoom}
+            disabled={saving}
+            className="inline-flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-5 py-2.5 text-sm font-semibold text-brand-600 transition hover:bg-brand-100 disabled:opacity-60"
+          >
+            <Plus size={15} /> Add a room
+          </button>
+        </div>
       </Card>
 
       {landlord?.locationPref && (
@@ -1273,6 +1604,278 @@ export default function MyBoardingHouse() {
           Signed-up as {landlord.businessName || 'your account'} · location on file: {landlord.locationPref}
         </p>
       )}
+
+      {/* -------- Video pick: ask for a title before staging -------- */}
+      <Modal open={videoPick !== null} onClose={() => setVideoPick(null)} title="Add a video">
+        {videoPick && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              confirmVideoPick()
+            }}
+            className="space-y-4"
+          >
+            <video src={URL.createObjectURL(videoPick.file)} controls className="w-full rounded-xl bg-navy-950 object-contain" />
+            <Field label="Video title" hint="e.g. Room tour — second floor">
+              <input
+                value={videoPick.title}
+                onChange={(e) => setVideoPick({ ...videoPick, title: e.target.value })}
+                placeholder="Walkthrough video"
+                className={inputCls}
+                autoFocus
+              />
+            </Field>
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600"
+              >
+                <Check size={15} /> Add video
+              </button>
+              <button
+                type="button"
+                onClick={() => setVideoPick(null)}
+                className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-navy-700 transition hover:bg-surface"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* -------- Video rename -------- */}
+      <Modal open={renameVideoId !== null} onClose={() => setRenameVideoId(null)} title="Rename video">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            confirmVideoRename()
+          }}
+          className="space-y-4"
+        >
+          <Field label="Video title">
+            <input value={renameDraft} onChange={(e) => setRenameDraft(e.target.value)} className={inputCls} autoFocus />
+          </Field>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600"
+            >
+              <Check size={15} /> Save title
+            </button>
+            <button
+              type="button"
+              onClick={() => setRenameVideoId(null)}
+              className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-navy-700 transition hover:bg-surface"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* -------- Add / Edit room — a focused modal instead of an inline form -------- */}
+      <Modal
+        open={roomOpen}
+        onClose={() => {
+          setRoomOpen(false)
+          setEditingRoom(null)
+          setRoomError('')
+        }}
+        title={editingRoom ? `Edit room ${editingRoom.roomNo}` : 'Add a room'}
+        wide
+      >
+        <form onSubmit={submitRoom} className="space-y-4">
+          {roomError && (
+            <p role="alert" className="rounded-xl border border-red-100 bg-red-50 px-4 py-2.5 text-sm font-medium text-danger">
+              {roomError}
+            </p>
+          )}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Room number" required>
+              <input
+                value={roomForm.roomNo}
+                onChange={(e) => setRoomForm((p) => ({ ...p, roomNo: e.target.value }))}
+                placeholder="e.g. 101"
+                className={inputCls}
+              />
+            </Field>
+            <Field label="Room type">
+              <select
+                value={roomForm.type}
+                onChange={(e) => setRoomForm((p) => ({ ...p, type: e.target.value }))}
+                className={inputCls}
+              >
+                {ROOM_TYPES.map((t) => (
+                  <option key={t} value={t} className="capitalize">
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Capacity (beds)" hint="How many boarders fit in this room.">
+              <input
+                value={roomForm.capacity}
+                onChange={(e) => setRoomForm((p) => ({ ...p, capacity: e.target.value }))}
+                inputMode="numeric"
+                placeholder="1"
+                className={inputCls}
+              />
+            </Field>
+            <Field label="Monthly rent (₱)" hint="Per boarder.">
+              <input
+                value={roomForm.monthlyRent}
+                onChange={(e) => setRoomForm((p) => ({ ...p, monthlyRent: e.target.value }))}
+                inputMode="numeric"
+                placeholder="2500"
+                className={inputCls}
+              />
+            </Field>
+            <Field label="Gender policy">
+              <select
+                value={roomForm.gender}
+                onChange={(e) => setRoomForm((p) => ({ ...p, gender: e.target.value }))}
+                className={inputCls}
+              >
+                {ROOM_GENDERS.map((g) => (
+                  <option key={g} value={g} className="capitalize">
+                    {g}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <button
+              type="button"
+              onClick={() => setRoomForm((p) => ({ ...p, aircon: !p.aircon }))}
+              aria-pressed={roomForm.aircon}
+              className={cn(
+                'flex items-center gap-3 rounded-xl border px-4 py-2.5 text-left transition',
+                roomForm.aircon ? 'border-mint-300 bg-mint-50/70' : 'border-slate-200 bg-white hover:border-brand-200',
+              )}
+            >
+              <span
+                className={cn(
+                  'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition',
+                  roomForm.aircon ? 'border-mint-400 bg-mint-400 text-white' : 'border-slate-300 bg-white',
+                )}
+              >
+                {roomForm.aircon && <Check size={13} />}
+              </span>
+              <span className="text-sm font-semibold text-navy-800">Air-conditioned</span>
+            </button>
+          </div>
+
+          {/* Room photo — what boarders see on the room list of your listing. */}
+          <div className="rounded-xl border border-slate-100 bg-surface p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-navy-700">Room photo</p>
+            <div className="mt-3 flex items-center gap-4">
+              {roomForm.photo ? (
+                <img src={roomForm.photo} alt={`Room ${roomForm.roomNo || ''}`} className="h-20 w-28 rounded-lg object-cover" />
+              ) : (
+                <span className="flex h-20 w-28 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-navy-300">
+                  <BedDouble size={22} />
+                </span>
+              )}
+              <div className="flex flex-col gap-2">
+                <label
+                  className={cn(
+                    'inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-navy-700 transition hover:border-brand-300 hover:text-brand-500',
+                    saving && 'pointer-events-none opacity-50',
+                  )}
+                >
+                  <Upload size={14} /> {roomForm.photo ? 'Change photo' : 'Upload photo'}
+                  <input
+                    type="file"
+                    accept={IMAGE_ACCEPT}
+                    className="sr-only"
+                    onChange={(e) => {
+                      const file = (e.target.files ?? [])[0]
+                      e.target.value = ''
+                      if (!file) return
+                      const problem = validateImageFile(file)
+                      if (problem) {
+                        setRoomError(problem)
+                        return
+                      }
+                      void fileToDataUrl(file).then((dataUrl) => {
+                        setRoomForm((p) => ({ ...p, photo: dataUrl }))
+                        setRoomError('')
+                      })
+                    }}
+                  />
+                </label>
+                {roomForm.photo && (
+                  <button
+                    type="button"
+                    onClick={() => setRoomForm((p) => ({ ...p, photo: '' }))}
+                    className="text-xs font-semibold text-danger hover:underline"
+                  >
+                    Remove photo
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Room needs — the small amenities boarders filter rooms by. */}
+          <Field label="Room needs" hint="What this room includes — boarders see these on your listing.">
+            <ChipList
+              values={roomForm.needs}
+              onChange={(next) => setRoomForm((p) => ({ ...p, needs: next }))}
+              placeholder="e.g. Own cabinet, Study desk, Outlet per bed"
+            />
+          </Field>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="submit"
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600"
+            >
+              {editingRoom ? 'Save room' : 'Add room'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setRoomOpen(false)
+                setEditingRoom(null)
+                setRoomError('')
+              }}
+              className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-navy-700 transition hover:bg-surface"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* -------- "Changes are live" pop-up after a successful save -------- */}
+      <Modal open={showSavedModal} onClose={() => setShowSavedModal(false)} title="Changes saved">
+        <div className="space-y-4 text-center">
+          <motion.div
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 18 }}
+            className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-mint-50 text-mint-600"
+          >
+            <Check size={28} strokeWidth={3} />
+          </motion.div>
+          <div>
+            <p className="text-base font-bold text-navy-800">Your boarding house is updated!</p>
+            <p className="mt-1 text-sm text-ink">
+              {house
+                ? 'All your changes — details, photos, videos and rooms — are live on your public listing.'
+                : 'Your listing is now published and visible to boarders in Explore.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowSavedModal(false)}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600"
+          >
+            Great, got it
+          </button>
+        </div>
+      </Modal>
     </div>
   )
 }

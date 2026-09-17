@@ -94,6 +94,7 @@ async function houseCardFromRow(h) {
     reviewsCount: h.reviews_count || 0,
     owner: h.owner_name || '',
     ownerInitials: h.owner_name ? h.owner_name.split(' ').map(n => n[0]).join('').slice(0, 2) : '',
+    ownerAvatarUrl: h.owner_avatar_url || '',
     landlordId: h.landlord_id ? String(h.landlord_id) : '',
     ownerUserId: h.owner_user_id ? String(h.owner_user_id) : '',
     verified: !!h.verified,
@@ -436,11 +437,12 @@ app.get('/api/houses', async (req, res) => {
       : []
 
     let sql = `
-      SELECT bh.*, l.business_name AS owner_name, l.verified AS owner_verified,
+      SELECT bh.*, l.business_name AS owner_name, l.verified AS owner_verified, u.avatar_url AS owner_avatar_url,
         (SELECT COALESCE(SUM(r.capacity), 0) FROM rooms r WHERE r.house_id = bh.id) AS total_rooms_calc,
         (SELECT COALESCE(SUM(r.occupied), 0) FROM rooms r WHERE r.house_id = bh.id) AS occupied_rooms_calc
       FROM boarding_houses bh
       LEFT JOIN landlords l ON l.id = bh.landlord_id
+      LEFT JOIN users u ON u.id = l.user_id
       WHERE ${PUBLISHED_HOUSE_SQL}
     `
     const params = []
@@ -542,6 +544,7 @@ app.get('/api/houses', async (req, res) => {
         reviewsCount: h.reviews_count || 0,
         owner: h.owner_name || '',
         ownerInitials: h.owner_name ? h.owner_name.split(' ').map(n => n[0]).join('').slice(0, 2) : '',
+        ownerAvatarUrl: h.owner_avatar_url || '',
         verified: !!h.verified,
         topRated: !!h.top_rated,
         lat: parseFloat(h.lat) || 0,
@@ -598,12 +601,13 @@ app.get('/api/houses/featured', async (req, res) => {
 app.get('/api/houses/:id', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      'SELECT bh.*, l.business_name AS owner_name, l.user_id AS owner_user_id FROM boarding_houses bh LEFT JOIN landlords l ON l.id = bh.landlord_id WHERE bh.id = ?',
+      'SELECT bh.*, l.business_name AS owner_name, l.user_id AS owner_user_id, u.avatar_url AS owner_avatar_url FROM boarding_houses bh LEFT JOIN landlords l ON l.id = bh.landlord_id LEFT JOIN users u ON u.id = l.user_id WHERE bh.id = ?',
       [req.params.id]
     )
     if (rows.length === 0) return res.status(404).json({ error: 'House not found' })
     const h = rows[0]
     const [imgs] = await pool.query('SELECT image_url FROM house_images WHERE house_id = ? ORDER BY sort_order', [h.id])
+    const [vids] = await pool.query('SELECT video_url, title FROM house_videos WHERE house_id = ? ORDER BY sort_order, id', [h.id])
     const [types] = await pool.query('SELECT DISTINCT type FROM rooms WHERE house_id = ?', [h.id])
     const vacant = Math.max(0, h.total_rooms - h.occupied_rooms)
     res.json({
@@ -611,6 +615,7 @@ app.get('/api/houses/:id', async (req, res) => {
       municipality: h.municipality, barangay: h.barangay, address: h.address,
       schoolNearby: typeof h.school_nearby === 'string' ? JSON.parse(h.school_nearby) : (h.school_nearby || []),
       images: imgs.map(i => i.image_url),
+      videos: vids.map(v => ({ url: v.video_url, title: v.title || '' })),
       description: h.description || '',
       rules: typeof h.rules === 'string' ? JSON.parse(h.rules) : (h.rules || []),
       visitorPolicy: h.visitor_policy || '', curfew: h.curfew || '',
@@ -621,6 +626,7 @@ app.get('/api/houses/:id', async (req, res) => {
       parking: !!h.parking, petFriendly: !!h.pet_friendly,
       rating: parseFloat(h.rating) || 0, reviewsCount: h.reviews_count || 0,
       owner: h.owner_name || '', ownerInitials: h.owner_name ? h.owner_name.split(' ').map(n => n[0]).join('').slice(0, 2) : '',
+      ownerAvatarUrl: h.owner_avatar_url || '',
       landlordId: h.landlord_id ? String(h.landlord_id) : '',
       ownerUserId: h.owner_user_id ? String(h.owner_user_id) : '',
       verified: !!h.verified, topRated: !!h.top_rated,
@@ -640,7 +646,7 @@ app.get('/api/houses/:id', async (req, res) => {
 app.get('/api/houses/:id/rooms', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      'SELECT id, room_no, type, capacity, occupied, monthly_rent, gender, aircon FROM rooms WHERE house_id = ? ORDER BY room_no',
+      'SELECT id, room_no, type, capacity, occupied, monthly_rent, gender, aircon, photo, needs FROM rooms WHERE house_id = ? ORDER BY room_no',
       [req.params.id]
     )
     // Public room availability only — never exposes tenant names.
@@ -656,6 +662,8 @@ app.get('/api/houses/:id/rooms', async (req, res) => {
         monthlyRent: r.monthly_rent,
         gender: r.gender,
         aircon: !!r.aircon,
+        photo: r.photo || '',
+        needs: (() => { try { return typeof r.needs === 'string' ? JSON.parse(r.needs) : (r.needs || []) } catch { return [] } })(),
         status: available > 0 ? 'available' : 'full',
       }
     }))
@@ -802,6 +810,10 @@ async function loadOwnerHouse(landlord) {
     'SELECT id, image_url FROM house_images WHERE house_id = ? ORDER BY sort_order, id',
     [h.id]
   )
+  const [videos] = await pool.query(
+    'SELECT id, video_url, title FROM house_videos WHERE house_id = ? ORDER BY sort_order, id',
+    [h.id]
+  )
   const lat = h.lat != null ? Number(h.lat) : (landlord.location_lat != null ? Number(landlord.location_lat) : null)
   const lng = h.lng != null ? Number(h.lng) : (landlord.location_lng != null ? Number(landlord.location_lng) : null)
   return {
@@ -834,12 +846,16 @@ async function loadOwnerHouse(landlord) {
     totalRooms: Number(h.total_rooms) || 0,
     occupiedRooms: Number(h.occupied_rooms) || 0,
     images: images.map((i) => ({ id: String(i.id), url: i.image_url })),
+    videos: videos.map((v) => ({ id: String(v.id), url: v.video_url, title: v.title || '' })),
     createdAt: h.created_at ? new Date(h.created_at).toISOString().slice(0, 10) : '',
   }
 }
 
 const isHouseImageDataUrl = (url) =>
   typeof url === 'string' && /^data:image\/(jpeg|jpg|png|webp)/i.test(url.trim())
+
+const isHouseVideoDataUrl = (url) =>
+  typeof url === 'string' && /^data:video\/(mp4|webm|ogg|quicktime)/i.test(url.trim())
 
 /** Load the landlord + their house, or answer 4xx and return null. */
 async function ownerContextOrRespond(req, res, { needHouse }) {
@@ -1083,6 +1099,87 @@ app.delete('/api/landlord/house/images/:id', async (req, res) => {
   }
 })
 
+/* ----------------------------------------------------------------
+   HOUSE VIDEOS — short walkthrough clips shown with the photos.
+   Same owner-scoped pattern as the image endpoints.
+   ---------------------------------------------------------------- */
+app.post('/api/landlord/house/videos', async (req, res) => {
+  try {
+    const ctx = await ownerContextOrRespond(req, res, { needHouse: true })
+    if (!ctx) return
+
+    const incoming = (Array.isArray(req.body.videos) ? req.body.videos : [req.body.videos]).filter(
+      (v) => v && isHouseVideoDataUrl(v.dataUrl)
+    )
+    if (incoming.length === 0) {
+      return res.status(400).json({ error: 'Upload MP4, WebM, OGG, or MOV videos.' })
+    }
+    if (incoming.some((v) => v.dataUrl.length > 64 * 1024 * 1024)) {
+      return res.status(400).json({ error: 'Each video must be 48 MB or smaller.' })
+    }
+
+    const [maxRow] = await pool.query(
+      'SELECT COALESCE(MAX(sort_order), -1) AS highest FROM house_videos WHERE house_id = ?',
+      [ctx.houseId]
+    )
+    let order = Number(maxRow[0].highest) + 1
+    for (const v of incoming) {
+      await pool.query(
+        'INSERT INTO house_videos (house_id, video_url, title, sort_order) VALUES (?, ?, ?, ?)',
+        [ctx.houseId, v.dataUrl.trim(), trimStr(v.title, 120), order++]
+      )
+    }
+
+    res.json({ house: await loadOwnerHouse(ctx.landlord) })
+  } catch (err) {
+    console.error('Add house videos error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// Rename one video (title lives in the request body).
+app.put('/api/landlord/house/videos/:id', async (req, res) => {
+  try {
+    const ctx = await ownerContextOrRespond(req, res, { needHouse: true })
+    if (!ctx) return
+
+    const [result] = await pool.query('UPDATE house_videos SET title = ? WHERE id = ? AND house_id = ?', [
+      trimStr(req.body.title, 120),
+      req.params.id,
+      ctx.houseId,
+    ])
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'That video is not part of your boarding house.' })
+    }
+
+    res.json({ house: await loadOwnerHouse(ctx.landlord) })
+  } catch (err) {
+    console.error('Update house video error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// Remove one video.
+app.delete('/api/landlord/house/videos/:id', async (req, res) => {
+  try {
+    const ctx = await ownerContextOrRespond(req, res, { needHouse: true })
+    if (!ctx) return
+
+    const [result] = await pool.query('DELETE FROM house_videos WHERE id = ? AND house_id = ?', [
+      req.params.id,
+      ctx.houseId,
+    ])
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'That video is not part of your boarding house.' })
+    }
+
+    res.json({ house: await loadOwnerHouse(ctx.landlord) })
+  } catch (err) {
+    console.error('Delete house video error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
 /* ================================================================
    ROOMS
    ================================================================ */
@@ -1110,6 +1207,8 @@ app.get('/api/rooms', async (req, res) => {
       monthlyRent: r.monthly_rent,
       gender: r.gender,
       aircon: !!r.aircon,
+      photo: r.photo || '',
+      needs: (() => { try { return typeof r.needs === 'string' ? JSON.parse(r.needs) : (r.needs || []) } catch { return [] } })(),
       tenantIds: [],
       tenantNames: r.tenant_names ? r.tenant_names.split(',') : [],
     })))
@@ -1121,7 +1220,7 @@ app.get('/api/rooms', async (req, res) => {
 
 app.post('/api/rooms', async (req, res) => {
   try {
-    const { roomNo, type, capacity, monthlyRent, gender, aircon } = req.body
+    const { roomNo, type, capacity, monthlyRent, gender, aircon, photo, needs } = req.body
     // The Rooms page never sent a house id, so this used to insert NULL into a
     // NOT NULL column and fail with a 500. Resolve it from the body, or from
     // the signed-in landlord's own boarding house.
@@ -1130,8 +1229,8 @@ app.post('/api/rooms', async (req, res) => {
       return res.status(400).json({ error: 'Set up your boarding house before adding rooms.' })
     }
     const [result] = await pool.query(
-      'INSERT INTO rooms (house_id, room_no, type, capacity, monthly_rent, gender, aircon) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [houseId, roomNo, type, capacity || 1, monthlyRent, gender || 'mixed', aircon || false]
+      'INSERT INTO rooms (house_id, room_no, type, capacity, monthly_rent, gender, aircon, photo, needs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [houseId, roomNo, type, capacity || 1, monthlyRent, gender || 'mixed', aircon || false, trimStr(photo, 8000000), JSON.stringify(toJsonArray(needs))]
     )
     // Update house total rooms
     await pool.query(
@@ -1149,7 +1248,7 @@ app.post('/api/rooms', async (req, res) => {
 
 app.put('/api/rooms/:id', async (req, res) => {
   try {
-    const { roomNo, type, capacity, monthlyRent, gender, aircon } = req.body
+    const { roomNo, type, capacity, monthlyRent, gender, aircon, photo, needs } = req.body
     const fields = []
     const params = []
     if (roomNo !== undefined) { fields.push('room_no = ?'); params.push(roomNo) }
@@ -1158,6 +1257,8 @@ app.put('/api/rooms/:id', async (req, res) => {
     if (monthlyRent !== undefined) { fields.push('monthly_rent = ?'); params.push(monthlyRent) }
     if (gender !== undefined) { fields.push('gender = ?'); params.push(gender) }
     if (aircon !== undefined) { fields.push('aircon = ?'); params.push(aircon) }
+    if (photo !== undefined) { fields.push('photo = ?'); params.push(trimStr(photo, 8000000)) }
+    if (needs !== undefined) { fields.push('needs = ?'); params.push(JSON.stringify(toJsonArray(needs))) }
     if (fields.length === 0) return res.status(400).json({ error: 'No fields to update' })
     params.push(req.params.id)
     await pool.query(`UPDATE rooms SET ${fields.join(', ')} WHERE id = ?`, params)
@@ -1165,7 +1266,7 @@ app.put('/api/rooms/:id', async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ error: 'Room not found' })
     const r = rows[0]
     if (Number(r.capacity) > Number(r.occupied)) await notifyAvailability(r.house_id, r.room_no)
-    res.json({ id: String(r.id), houseId: String(r.house_id), roomNo: r.room_no, type: r.type, capacity: r.capacity, occupied: r.occupied, monthlyRent: r.monthly_rent, gender: r.gender, aircon: !!r.aircon, tenantIds: [] })
+    res.json({ id: String(r.id), houseId: String(r.house_id), roomNo: r.room_no, type: r.type, capacity: r.capacity, occupied: r.occupied, monthlyRent: r.monthly_rent, gender: r.gender, aircon: !!r.aircon, photo: r.photo || '', needs: (() => { try { return typeof r.needs === 'string' ? JSON.parse(r.needs) : (r.needs || []) } catch { return [] } })(), tenantIds: [] })
   } catch (err) {
     console.error('Update room error:', err)
     res.status(500).json({ error: 'Server error' })
@@ -1768,12 +1869,13 @@ app.get('/api/favorites', async (req, res) => {
     const { userId } = req.query
     if (!userId) return res.status(400).json({ error: 'userId is required' })
     const [rows] = await pool.query(`
-      SELECT bh.*, l.business_name AS owner_name, l.user_id AS owner_user_id, f.created_at AS favorited_at,
+      SELECT bh.*, l.business_name AS owner_name, l.user_id AS owner_user_id, u.avatar_url AS owner_avatar_url, f.created_at AS favorited_at,
         (SELECT COALESCE(SUM(r.capacity), 0) FROM rooms r WHERE r.house_id = bh.id) AS total_rooms_calc,
         (SELECT COALESCE(SUM(r.occupied), 0) FROM rooms r WHERE r.house_id = bh.id) AS occupied_rooms_calc
       FROM favorites f
       JOIN boarding_houses bh ON bh.id = f.house_id
       LEFT JOIN landlords l ON l.id = bh.landlord_id
+      LEFT JOIN users u ON u.id = l.user_id
       WHERE f.user_id = ?
       ORDER BY f.created_at DESC
     `, [userId])
@@ -2413,6 +2515,23 @@ async function ensureSchema() {
   }
 
   try {
+    /* Room photo + needs: the Edit Room modal stores a picture of the actual
+       room and the per-room amenities boarders ask about. Created on boot so
+       the modal works on databases created from older dumps. */
+    await pool.query(`
+      ALTER TABLE rooms
+        ADD COLUMN photo MEDIUMTEXT DEFAULT NULL,
+        ADD COLUMN needs TEXT DEFAULT NULL
+    `)
+    console.log('✅ Added rooms.photo and rooms.needs — room editing enabled')
+  } catch (err) {
+    // 1060 = duplicate column — expected on every boot after the first.
+    if (err.errno !== 1060 && err.code !== 'ER_DUP_FIELDNAME') {
+      console.warn('rooms photo/needs schema check skipped:', err.message)
+    }
+  }
+
+  try {
     /* Landlord house photos live in `house_images` as data URLs. The CREATE
        TABLE in database/boardease.sql has this table, but a database created
        from an older dump may not — create it on boot so photo uploads never
@@ -2436,6 +2555,23 @@ async function ensureSchema() {
     }
   } catch (err) {
     console.warn('house_images schema check skipped:', err.message)
+  }
+
+  try {
+    /* Landlord walkthrough videos live in their own table so a big clip never
+       bloats the photo gallery queries. Created on boot, same as house_images. */
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS house_videos (
+        id int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        house_id int(11) NOT NULL,
+        video_url MEDIUMTEXT NOT NULL,
+        title varchar(120) DEFAULT NULL,
+        sort_order int(11) DEFAULT 0,
+        KEY house_id (house_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `)
+  } catch (err) {
+    console.warn('house_videos schema check skipped:', err.message)
   }
 
   try {

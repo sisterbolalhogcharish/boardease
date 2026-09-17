@@ -487,6 +487,12 @@ export interface LandlordHouseImage {
   url: string
 }
 
+export interface LandlordHouseVideo {
+  id: string
+  url: string
+  title: string
+}
+
 /** The owner-facing shape of a boarding house — everything the Explore page
  *  shows, plus the fields only the owner can see (verification, rating). */
 export interface LandlordHouse {
@@ -519,6 +525,7 @@ export interface LandlordHouse {
   totalRooms: number
   occupiedRooms: number
   images: LandlordHouseImage[]
+  videos: LandlordHouseVideo[]
   createdAt: string
 }
 
@@ -605,6 +612,36 @@ export async function deleteLandlordHouseImage(userId: number | string, imageId:
   )
 }
 
+/* ------------------------ House walkthrough videos ----------------------- */
+
+export async function addLandlordHouseVideos(
+  userId: number | string,
+  videos: { dataUrl: string; title: string }[],
+): Promise<{ house: LandlordHouse }> {
+  return fetchJSON<{ house: LandlordHouse }>('/landlord/house/videos', {
+    method: 'POST',
+    body: JSON.stringify({ userId, videos }),
+  })
+}
+
+export async function updateLandlordHouseVideo(
+  userId: number | string,
+  videoId: string,
+  title: string,
+): Promise<{ house: LandlordHouse }> {
+  return fetchJSON<{ house: LandlordHouse }>(`/landlord/house/videos/${encodeURIComponent(videoId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ userId, title }),
+  })
+}
+
+export async function deleteLandlordHouseVideo(userId: number | string, videoId: string): Promise<{ house: LandlordHouse }> {
+  return fetchJSON<{ house: LandlordHouse }>(
+    `/landlord/house/videos/${encodeURIComponent(videoId)}?userId=${encodeURIComponent(String(userId))}`,
+    { method: 'DELETE' },
+  )
+}
+
 /* ------------------------------------------------------------------ */
 /*  Boarder — shared DTOs                                              */
 /* ------------------------------------------------------------------ */
@@ -628,6 +665,8 @@ export interface PublicRoom {
   monthlyRent: number
   gender: string
   aircon: boolean
+  photo?: string
+  needs?: string[]
   status: 'available' | 'full'
 }
 

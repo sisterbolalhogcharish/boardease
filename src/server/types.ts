@@ -17,6 +17,8 @@ export interface BoardingHouse {
   address: string
   schoolNearby: string[]
   images: string[]
+  /** Walkthrough clips (public listing only) — optional so mock data without videos still typechecks. */
+  videos?: { url: string; title: string }[]
   description: string
   rules: string[]
   visitorPolicy: string
@@ -36,6 +38,8 @@ export interface BoardingHouse {
   reviewsCount: number
   owner: string
   ownerInitials: string
+  /** Landlord profile photo (data URL from users.avatar_url) — '' when the landlord has none. */
+  ownerAvatarUrl?: string
   verified: boolean
   topRated: boolean
   lat: number
@@ -54,6 +58,8 @@ export interface Room {
   monthlyRent: number
   gender: Gender
   aircon: boolean
+  photo?: string
+  needs?: string[]
   tenantIds: string[]
 }
 

@@ -371,6 +371,33 @@ export function useDeleteLandlordHouseImage() {
   })
 }
 
+export function useAddLandlordHouseVideos() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userId, videos }: { userId: number | string; videos: { dataUrl: string; title: string }[] }) =>
+      api.addLandlordHouseVideos(userId, videos),
+    onSuccess: () => invalidateHouse(qc),
+  })
+}
+
+export function useUpdateLandlordHouseVideo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userId, videoId, title }: { userId: number | string; videoId: string; title: string }) =>
+      api.updateLandlordHouseVideo(userId, videoId, title),
+    onSuccess: () => invalidateHouse(qc),
+  })
+}
+
+export function useDeleteLandlordHouseVideo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userId, videoId }: { userId: number | string; videoId: string }) =>
+      api.deleteLandlordHouseVideo(userId, videoId),
+    onSuccess: () => invalidateHouse(qc),
+  })
+}
+
 /* ------------------------------ Mutations ------------------------- */
 export function useMarkPaymentPaid() {
   const qc = useQueryClient()
