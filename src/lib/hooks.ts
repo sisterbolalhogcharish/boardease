@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback } from 'react'
 import * as api from './api'
 import { useLandlordHouse } from './landlordHouse'
 
@@ -24,6 +25,23 @@ export function useSimilarHouses(id: string | undefined) {
 
 export function useLocations() {
   return useQuery({ queryKey: ['locations'], queryFn: api.getLocations })
+}
+
+/**
+ * Warm the Explore (/search) cache the instant the user *hovers* the nav
+ * link, so by the time the click lands and the page mounts the data is
+ * already in memory — no skeleton flash, no spinner. This is the correct
+ * way to make Explore feel instant; the earlier approach (baking a stale
+ * array into a global) fought react-query's cache keys and never hit.
+ */
+export function usePrefetchSearch() {
+  const qc = useQueryClient()
+  return useCallback(() => {
+    const key = ['houses', api.defaultSearchFilters(), 'recommended'] as const
+    // Skip if fresh data is already cached (e.g. second hover).
+    if (qc.getQueryData(key)) return
+    void qc.prefetchQuery({ queryKey: key, queryFn: () => api.getHouses(api.defaultSearchFilters(), 'recommended'), staleTime: 30_000 })
+  }, [qc])
 }
 
 export function useReviews(houseId?: string) {

@@ -140,6 +140,24 @@ async function attachApprovedAccommodation(rs) {
 /* ================================================================
    AUTH
    ================================================================ */
+
+/** Turn the MySQL failures that make auth 500 into guidance the person at the
+ *  sign-in form can act on, instead of a bare "Server error". */
+function dbErrorMessage(err) {
+  switch (err?.code) {
+    case 'ECONNREFUSED':
+      return 'Cannot reach MySQL. Start MySQL (XAMPP/WAMP or the MySQL service) and try again.'
+    case 'ER_ACCESS_DENIED_ERROR':
+      return 'MySQL rejected the database credentials. Set DB_USER / DB_PASSWORD in .env to match your MySQL user and restart the API server.'
+    case 'ER_BAD_DB_ERROR':
+      return 'The boardease database does not exist on this MySQL server. Import database/boardease.sql first, then try again.'
+    case 'ER_BAD_FIELD_ERROR':
+    case 'ER_NO_SUCH_TABLE':
+      return 'The database schema is out of date. Import database/boardease.sql and database/boarder_avatar.sql, then restart the API server.'
+    default:
+      return 'Server error'
+  }
+}
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body
@@ -157,7 +175,7 @@ app.post('/api/auth/login', async (req, res) => {
     res.json(rows[0])
   } catch (err) {
     console.error('Login error:', err)
-    res.status(500).json({ error: 'Server error' })
+    res.status(500).json({ error: dbErrorMessage(err) })
   }
 })
 
@@ -211,7 +229,7 @@ app.post('/api/auth/register', async (req, res) => {
     })
   } catch (err) {
     console.error('Register error:', err)
-    res.status(500).json({ error: 'Server error' })
+    res.status(500).json({ error: dbErrorMessage(err) })
   }
 })
 

@@ -69,6 +69,32 @@ export interface SearchFilters {
 
 export type SortKey = 'recommended' | 'price-asc' | 'price-desc' | 'rating' | 'available'
 
+/**
+ * Canonical "no filters" SearchFilters value. Both the Explore nav link's
+ * prefetch and the Search page itself must build their react-query key from
+ * this exact object shape, or the cache misses and the user stares at
+ * skeletons instead of instantly-rendered results.
+ */
+export function defaultSearchFilters(): SearchFilters {
+  return {
+    // NOTE: must byte-match the Search page's initial filters object after
+    // JSON-key-hashing — `onlyAvailable: false` is set there explicitly (only
+    // `undefined` fields are dropped), so it has to be set here too or the
+    // prefetch key hashes differently and the cache never hits.
+    onlyAvailable: false,
+    roomTypes: [],
+    amenities: {
+      wifi: false,
+      aircon: false,
+      kitchen: false,
+      laundry: false,
+      parking: false,
+      petFriendly: false,
+      curfew: false,
+    },
+  }
+}
+
 export interface HouseCard extends BoardingHouse {
   status: string
   vacant: number

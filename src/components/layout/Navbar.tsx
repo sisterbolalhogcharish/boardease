@@ -4,20 +4,27 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { useLanguage, type LangCode } from '../../lib/i18n'
-import { cn } from '../../lib/utils'
+import { usePrefetchSearch } from '../../lib/hooks'
+import { cn, scrollToSectionId } from '../../lib/utils'
 import { navigationSections } from '../../pages/Landing'
 
-export default function Navbar({ solid }: { solid?: boolean }) {
-  const [scrolled, setScrolled] = useState(false)
-  const [open, setOpen] = useState(false)
-  const [langOpen, setLangOpen] = useState(false)
-  const { user, logout } = useAuth()
-  const { lang, setLang, t, languages } = useLanguage()
-  const location = useLocation()
-  const navigate = useNavigate()
-  const langRef = useRef<HTMLDivElement>(null)
+/* ------------------------------------------------------------------ */
+/*  Nav model (computed once, lazily)                                  */
+/* ------------------------------------------------------------------ */
+type NavLinkMeta = { href: string; section?: string; labelKey: string }
 
-  const navLinkMeta: Array<{ href: string; section?: string; labelKey: string }> = navigationSections.map((s) => {
+/**
+ * Built lazily on first render rather than at module scope: Navbar and
+ * Landing.tsx (which owns `navigationSections`) import each other, so touching
+ * that constant while this module evaluates would hit a TDZ ReferenceError.
+ * After the first call the cache is reused for the app's lifetime — no
+ * per-render rebuilding of the model.
+ */
+let navLinksCache: NavLinkMeta[] | null = null
+function getNavLinks(): NavLinkMeta[] {
+  if (navLinksCache) return navLinksCache
+
+  const meta: NavLinkMeta[] = navigationSections.map((s) => {
     let href = '/'
     let section: string | undefined
     let labelKey: string
@@ -36,15 +43,99 @@ export default function Navbar({ solid }: { solid?: boolean }) {
     return { href, section, labelKey }
   })
 
-  const current = languages.find((l) => l.code === lang) ?? languages[0]
+  navLinksCache = [
+    meta.find((m) => m.labelKey === 'nav.explore'),
+    meta.find((m) => m.labelKey === 'nav.categories'),
+    meta.find((m) => m.labelKey === 'nav.locations'),
+    meta.find((m) => m.labelKey === 'nav.howItWorks'),
+    meta.find((m) => m.labelKey === 'nav.pricing'),
+  ].filter((m): m is NavLinkMeta => Boolean(m))
+  return navLinksCache
+}
 
-  const navLinks = [
-    navLinkMeta.find((m) => m.labelKey === 'nav.explore'),
-    navLinkMeta.find((m) => m.labelKey === 'nav.categories'),
-    navLinkMeta.find((m) => m.labelKey === 'nav.locations'),
-    navLinkMeta.find((m) => m.labelKey === 'nav.howItWorks'),
-    navLinkMeta.find((m) => m.labelKey === 'nav.pricing'),
-  ].filter((m): m is { href: string; section?: string; labelKey: string } => Boolean(m))
+/* ------------------------------------------------------------------ */
+/*  Nav badge — module-level component                                 */
+/* ------------------------------------------------------------------ */
+/**
+ * Lives at module scope on purpose: the old inline component got a fresh
+ * function identity on every Navbar render (every scroll tick flips `scrolled`
+ * and the active-section effect flips `activeSection`), and React remounts a
+ * subtree whenever its element type changes identity. That constant unmount/
+ * remount churn reset in-flight CSS hover transitions and added mounting work
+ * in the click path — the "slight delay" on the badges. With a stable type the
+ * elements reconcile in place and interactions stay on the same DOM nodes.
+ */
+function NavBadge({
+  href,
+  section,
+  markerId,
+  label,
+  active,
+  onNavigate,
+  onPrefetch,
+}: {
+  href: string
+  section?: string
+  markerId: string
+  label: string
+  active: boolean
+  onNavigate: () => void
+  /** Warm the Explore cache on pointer-over / press / keyboard focus. */
+  onPrefetch?: () => void
+}) {
+  const baseClass = 'text-navy-500 hover:text-navy-800'
+
+  return (
+    <a
+      href={section ? `#${section}` : href}
+      onPointerEnter={onPrefetch}
+      onPointerDown={onPrefetch}
+      onFocus={onPrefetch}
+      onClick={(e) => {
+        e.preventDefault()
+        onNavigate()
+      }}
+      className={cn(
+        // 150 ms instead of 300 ms: the color feedback now completes almost as
+        // soon as it starts, while the transition itself (same properties,
+        // same easing feel) is preserved.
+        'group relative rounded-full px-4 py-2 text-sm font-medium transition-[color,transform] duration-150 active:scale-[0.97]',
+        active ? 'text-navy-800' : baseClass,
+      )}
+      aria-current={active ? 'page' : undefined}
+    >
+      {label}
+      {/* One shared element per nav bar: because the *same* element glides
+          between items, the underline slides over instead of one bar
+          shrinking while another grows (the old blinking).
+          Rendered whenever the badge is active — section badges while their
+          section is in view on the landing page, and the Explore badge while
+          the user is on the Explore page (/search). */}
+      {active && (
+        <motion.span
+          layoutId={`nav-active-underline-${markerId}`}
+          transition={{ type: 'spring', stiffness: 380, damping: 34, mass: 0.6 }}
+          className="absolute -bottom-0.5 left-[30%] h-1 w-[40%] rounded-full bg-brand-400"
+          aria-hidden="true"
+        />
+      )}
+    </a>
+  )
+}
+
+export default function Navbar({ solid }: { solid?: boolean }) {
+  const [scrolled, setScrolled] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [langOpen, setLangOpen] = useState(false)
+  const { user, logout } = useAuth()
+  const { lang, setLang, t, languages } = useLanguage()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const langRef = useRef<HTMLDivElement>(null)
+  const prefetchSearch = usePrefetchSearch()
+  const navLinks = getNavLinks()
+
+  const current = languages.find((l) => l.code === lang) ?? languages[0]
 
   const [activeSection, setActiveSection] = useState('hero')
   const activeSectionRef = useRef('hero')
@@ -139,80 +230,50 @@ export default function Navbar({ solid }: { solid?: boolean }) {
     // Wait a frame so freshly-rendered landing sections exist in the DOM
     // before we try to measure their position.
     const raf = requestAnimationFrame(() => {
-      const el = document.getElementById(id)
-      if (!el) return
-      const top = el.getBoundingClientRect().top + window.scrollY - 88
-      window.scrollTo({ top, behavior: 'smooth' })
+      scrollToSectionId(id)
     })
     return () => cancelAnimationFrame(raf)
   }, [location.hash, location.pathname])
 
   const scrolledSolid = solid || scrolled
 
+  /**
+   * One shared navigation handler for every badge. Section links smooth-scroll
+   * with the app-controlled fast scroller (speed-capped, ~0.3-0.6 s instead of
+   * the browser's distance-scaled crawl) — no setTimeout, no waits. Cross-page
+   * links go through React Router synchronously (the Explore data itself was
+   * already prefetched on pointer-over/press).
+   */
+  const navigateToBadge = (link: NavLinkMeta) => {
+    setOpen(false)
+
+    if (link.section) {
+      if (document.getElementById(link.section)) {
+        scrollToSectionId(link.section)
+        // Keep the URL in sync (so refresh lands on the same section) without
+        // adding a history entry or re-triggering the scroll effect.
+        window.history.replaceState(null, '', `/#${link.section}`)
+      } else {
+        // Section isn't on this page (e.g. we're on /houses/1 or /search):
+        // let React Router take us to the landing page and let the hash
+        // effect above do the smooth scroll once the section has rendered.
+        navigate(`/#${link.section}`)
+      }
+      return
+    }
+
+    // Page link (e.g. /search, /login): SPA navigation — no full reload,
+    // back button works, and the URL updates. The matching /api/houses
+    // request was already warmed by the hover/press prefetch, so results
+    // render without a skeleton wait.
+    if (link.href === '/search') prefetchSearch()
+    navigate(link.href)
+  }
+
   const langButtonClass = cn(
     'inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium transition',
     'text-navy-700 hover:bg-navy-50',
   )
-
-  const scrollToSection = (section: string) => {
-    const el = document.getElementById(section)
-    if (el) {
-      const top = el.getBoundingClientRect().top + window.scrollY - 88
-      window.scrollTo({ top, behavior: 'smooth' })
-      // Keep the URL in sync (so refresh lands on the same section) without
-      // adding a history entry or re-triggering the scroll effect.
-      window.history.replaceState(null, '', `/#${section}`)
-      return
-    }
-    // Section isn't on this page (e.g. we're on /houses/1 or /search):
-    // let React Router take us to the landing page and let the hash
-    // effect above do the smooth scroll once the section has rendered.
-    navigate(`/#${section}`)
-  }
-
-  const NavLink = ({ href, labelKey, section, markerId }: { href: string; labelKey: string; section?: string; markerId: string }) => {
-    const label = t(labelKey)
-    const isPageActive = href === '/search' ? location.pathname === '/search' : location.pathname === '/'
-    const active = section ? activeSection === section : isPageActive
-    const baseClass = 'text-navy-500 hover:text-navy-800'
-
-    return (
-      <a
-        href={section ? `#${section}` : href}
-        onClick={(e) => {
-          e.preventDefault()
-          setOpen(false)
-
-          if (section) {
-            scrollToSection(section)
-            return
-          }
-
-          // Page link (e.g. /search, /login): SPA navigation — no full reload,
-          // back button works, and the URL updates.
-          navigate(href)
-        }}
-        className={cn(
-          'group relative rounded-full px-4 py-2 text-sm font-medium transition-colors duration-300',
-          active ? 'text-navy-800' : baseClass,
-        )}
-        aria-current={active ? 'page' : undefined}
-      >
-        {label}
-        {/* One shared element per nav bar: because the *same* element glides
-            between items, the underline slides over instead of one bar
-            shrinking while another grows (the old blinking). */}
-        {active && section && (
-          <motion.span
-            layoutId={`nav-active-underline-${markerId}`}
-            transition={{ type: 'spring', stiffness: 300, damping: 32, mass: 0.8 }}
-            className="absolute -bottom-0.5 left-[30%] h-1 w-[40%] rounded-full bg-brand-400"
-            aria-hidden="true"
-          />
-        )}
-      </a>
-    )
-  }
 
   const LangMenu = ({ mobile = false }: { mobile?: boolean }) => (
     <div className={cn('relative', mobile && 'w-full')} ref={langRef} data-lang-menu>
@@ -274,6 +335,23 @@ export default function Navbar({ solid }: { solid?: boolean }) {
     </div>
   )
 
+  const renderNavLink = (l: NavLinkMeta, markerId: string) => {
+    const isPageActive = l.href === '/search' ? location.pathname === '/search' : location.pathname === '/'
+    const active = l.section ? activeSection === l.section : isPageActive
+    return (
+      <NavBadge
+        key={l.section ?? l.labelKey}
+        href={l.href}
+        section={l.section}
+        markerId={markerId}
+        label={t(l.labelKey)}
+        active={active}
+        onNavigate={() => navigateToBadge(l)}
+        onPrefetch={l.href === '/search' ? prefetchSearch : undefined}
+      />
+    )
+  }
+
   return (
     <header
       className={cn(
@@ -296,9 +374,7 @@ export default function Navbar({ solid }: { solid?: boolean }) {
 
         <div className="hidden items-center gap-1 md:flex">
           <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
-            {navLinks.map((l) => (
-              <NavLink key={l.section ?? l.labelKey} href={l.href} labelKey={l.labelKey} section={l.section} markerId="desktop" />
-            ))}
+            {navLinks.map((l) => renderNavLink(l, 'desktop'))}
           </div>
         </div>
 
@@ -358,9 +434,7 @@ export default function Navbar({ solid }: { solid?: boolean }) {
             )}
           >
             <div className="flex flex-col gap-1 px-4 py-4">
-              {navLinks.map((l) => (
-                <NavLink key={l.section ?? l.labelKey} href={l.href} labelKey={l.labelKey} section={l.section} markerId="mobile" />
-              ))}
+              {navLinks.map((l) => renderNavLink(l, 'mobile'))}
               <div className="text-navy-800">
                 <LangMenu mobile />
               </div>

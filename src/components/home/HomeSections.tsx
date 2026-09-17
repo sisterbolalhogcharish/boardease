@@ -16,7 +16,7 @@ import {
   Wifi,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { useFeaturedHouses, useLocations } from '../../lib/hooks'
+import { useFeaturedHouses, useLocations, usePrefetchSearch } from '../../lib/hooks'
 import { useLanguage } from '../../lib/i18n'
 import { cn, peso } from '../../lib/utils'
 import HouseCard from '../HouseCard'
@@ -28,6 +28,7 @@ import { HouseImage, Reveal, SectionHeading, Skeleton } from '../ui'
 export function FeaturedHouses() {
   const { data, isLoading } = useFeaturedHouses()
   const { t } = useLanguage()
+  const prefetchSearch = usePrefetchSearch()
   return (
     <section id="featured" className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -39,6 +40,9 @@ export function FeaturedHouses() {
         <Reveal delay={0.1}>
           <Link
             to="/search"
+            onPointerEnter={prefetchSearch}
+            onPointerDown={prefetchSearch}
+            onFocus={prefetchSearch}
             className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-navy-800 transition hover:border-brand-300 hover:text-brand-500"
           >
             {t('featured.viewAll')} <ArrowRight size={15} />

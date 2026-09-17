@@ -287,7 +287,7 @@ export default function Login() {
                     {role === 'landlord' ? (
                       <>Demo: <span className="font-mono text-white/60">landlord@gmail.com</span> / <span className="font-mono text-white/60">landlord123</span></>
                     ) : (
-                      <>Demo: <span className="font-mono text-white/60">boarder@gmail.com</span> / <span className="font-mono text-white/60">boarder123</span></>
+                      <>Demo: <span className="font-mono text-white/60">cha@gmail.com</span> / <span className="font-mono text-white/60">cha123</span></>
                     )}
                   </p>
                 </form>

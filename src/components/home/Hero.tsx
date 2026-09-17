@@ -3,6 +3,7 @@ import { Building2, MapPin, Search, Sparkles } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLanguage } from '../../lib/i18n'
+import { scrollToSectionId } from '../../lib/utils'
 
 const MUNICIPALITY_VALUES = ['Anywhere', 'San Juan', 'Siquijor', 'Larena', 'Lazi', 'Maria', 'Enrique Villanueva'] as const
 const ROOM_TYPE_VALUES = ['Any type', 'Bedspace', 'Single', 'Double', 'Studio'] as const
@@ -56,6 +57,11 @@ export default function Hero() {
           <div className="mt-8 flex flex-wrap items-center gap-4">
             <a
               href="#search"
+              onClick={(e) => {
+                e.preventDefault()
+                scrollToSectionId('search')
+                window.history.replaceState(null, '', '/#search')
+              }}
               className="group relative inline-flex items-center gap-2 overflow-hidden rounded-full bg-brand-500 px-7 py-3.5 text-sm font-semibold text-white shadow-[0_12px_32px_rgb(30_115_232/0.45)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-brand-400"
             >
               <Search size={17} /> {t('hero.searchNow')}
@@ -76,6 +82,11 @@ export default function Hero() {
             </a>
             <a
               href="#featured"
+              onClick={(e) => {
+                e.preventDefault()
+                scrollToSectionId('featured')
+                window.history.replaceState(null, '', '/#featured')
+              }}
               className="inline-flex items-center gap-2 rounded-full border border-navy-200 bg-white px-7 py-3.5 text-sm font-semibold text-navy-800 transition hover:border-navy-300 hover:bg-navy-50"
             >
               {t('hero.exploreListings')}
