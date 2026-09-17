@@ -166,13 +166,13 @@ app.post('/api/auth/login', async (req, res) => {
     }
     const cleanEmail = String(email).trim().toLowerCase()
     const [rows] = await pool.query(
-      'SELECT id, email, name, role, avatar_color, avatar_url, phone FROM users WHERE email = ? AND password = ?',
+      'SELECT u.id, u.email, u.name, u.role, u.avatar_color, u.avatar_url, u.phone, l.business_name AS property FROM users u LEFT JOIN landlords l ON l.user_id = u.id WHERE u.email = ? AND u.password = ?',
       [cleanEmail, password]
     )
     if (rows.length === 0) {
       return res.status(401).json({ error: 'Invalid email or password' })
     }
-    res.json(rows[0])
+    res.json({ ...rows[0], property: rows[0].property || '' })
   } catch (err) {
     console.error('Login error:', err)
     res.status(500).json({ error: dbErrorMessage(err) })
@@ -2246,10 +2246,22 @@ app.put('/api/boarder/profile', async (req, res) => {
     if (!userId) return res.status(400).json({ error: 'userId is required' })
     const [urows] = await pool.query('SELECT role FROM users WHERE id = ?', [userId])
     if (urows.length === 0) return res.status(404).json({ error: 'User not found' })
-    if (urows[0].role !== 'boarder') return res.status(403).json({ error: 'Not a boarder account' })
+    // Landlords edit their name/phone/photo here too, so this endpoint is
+    // shared: boarders additionally get the boarder_profiles upsert below.
+    if (!['boarder', 'landlord', 'admin'].includes(urows[0].role)) {
+      return res.status(403).json({ error: 'Not a boarder account' })
+    }
+    const isBoarder = urows[0].role === 'boarder'
 
     if (name !== undefined) await pool.query('UPDATE users SET name = ? WHERE id = ?', [name, userId])
     if (phone !== undefined) await pool.query('UPDATE users SET phone = ? WHERE id = ?', [phone, userId])
+
+    // Landlords only: "Property / boarding house name" — stored on the
+    // landlord profile as the business name, which is what Explore shows.
+    const { property } = req.body
+    if (property !== undefined && urows[0].role === 'landlord') {
+      await pool.query('UPDATE landlords SET business_name = ? WHERE user_id = ?', [String(property).trim().slice(0, 255), userId])
+    }
 
     // Profile photo: either an uploaded image (data URL) or an external image
     // URL. Size is capped so a single photo can never bloat the users table.
@@ -2265,13 +2277,15 @@ app.put('/api/boarder/profile', async (req, res) => {
       await pool.query('UPDATE users SET avatar_url = ? WHERE id = ?', [value || null, userId])
     }
 
-    await pool.query(
-      `INSERT INTO boarder_profiles (user_id, age, gender, school, course, guardian_name, guardian_phone, address)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE age = VALUES(age), gender = VALUES(gender), school = VALUES(school),
-         course = VALUES(course), guardian_name = VALUES(guardian_name), guardian_phone = VALUES(guardian_phone), address = VALUES(address)`,
-      [userId, age || null, gender || null, school || null, course || null, guardianName || null, guardianPhone || null, address || null]
-    )
+    if (isBoarder) {
+      await pool.query(
+        `INSERT INTO boarder_profiles (user_id, age, gender, school, course, guardian_name, guardian_phone, address)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE age = VALUES(age), gender = VALUES(gender), school = VALUES(school),
+           course = VALUES(course), guardian_name = VALUES(guardian_name), guardian_phone = VALUES(guardian_phone), address = VALUES(address)`,
+        [userId, age || null, gender || null, school || null, course || null, guardianName || null, guardianPhone || null, address || null]
+      )
+    }
     res.json({ ok: true })
   } catch (err) {
     console.error('Update boarder profile error:', err)

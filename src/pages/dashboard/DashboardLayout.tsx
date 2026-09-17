@@ -25,7 +25,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { useLandlordHouse } from '../../lib/landlordHouse'
 import { useMarkNotificationsRead, useNotifications } from '../../lib/hooks'
-import { cn, initials, timeAgo } from '../../lib/utils'
+import { cn, timeAgo } from '../../lib/utils'
 import { Avatar, Spinner } from '../../components/ui'
 import { usePlanFeatures } from '../../components/dashboard/PlanGate'
 
@@ -87,12 +87,12 @@ export default function DashboardLayout() {
   const closeMenu = () => setMobileOpen(false)
 
   const Sidebar = (
-    <div className="flex h-full flex-col bg-navy-900">
+    <div className="flex h-full flex-col border-r border-slate-200 bg-white">
       <div className="px-6 pb-2 pt-6">
         <Link to="/" className="inline-flex" aria-label="BoardEase home">
           <img src="/logo.png" alt="BoardEase" decoding="async" className="h-12 w-auto rounded-lg" />
         </Link>
-        <p className="mt-2 text-[10px] font-medium tracking-wide text-navy-300">Landlord Console</p>
+        <p className="mt-2 text-[10px] font-medium tracking-wide text-mut">Landlord Console</p>
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
@@ -106,11 +106,11 @@ export default function DashboardLayout() {
               className={cn(
                 'group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200',
                 active
-                  ? 'bg-brand-500 text-white shadow-[0_8px_20px_rgb(30_115_232/0.4)]'
-                  : 'text-navy-200 hover:bg-white/5 hover:text-white',
+                  ? 'bg-brand-50 font-semibold text-brand-700'
+                  : 'text-navy-800 hover:bg-navy-50 hover:text-navy-900',
               )}
             >
-              <item.icon size={18} className={active ? '' : 'text-navy-300 group-hover:text-mint-300'} />
+              <item.icon size={18} className={active ? 'text-brand-500' : 'text-mut group-hover:text-brand-500'} />
               {item.label}
             </Link>
           )
@@ -123,17 +123,18 @@ export default function DashboardLayout() {
             className={cn(
               'group mt-4 flex items-center gap-3 rounded-xl border border-mint-400/25 bg-gradient-to-r from-mint-400/15 to-brand-500/15 px-3.5 py-3 text-sm font-semibold transition-all duration-200',
               pathname.startsWith('/dashboard/ai')
-                ? 'bg-gradient-to-r from-mint-400 to-brand-500 text-white shadow-[0_8px_20px_rgb(51_199_165/0.4)]'
-                : 'text-mint-300 hover:from-mint-400/25 hover:to-brand-500/25 hover:text-white',
+                ? 'border-mint-400/50 from-mint-400/30 to-brand-500/30 text-mint-700'
+                : 'text-mint-600 hover:from-mint-400/25 hover:to-brand-500/25 hover:text-mint-700',
             )}
           >
             <Bot size={19} />
             AI Assistant
-            <span className="ml-auto rounded-full bg-mint-400/20 px-2 py-0.5 text-[10px] font-bold text-mint-300">NEW</span>
+            <span className="ml-auto rounded-full bg-mint-400/20 px-2 py-0.5 text-[10px] font-bold text-mint-600">NEW</span>
           </Link>
         )}
-      </nav>        <div className="border-t border-white/10 p-4">
-        <div className="flex items-center gap-3 rounded-xl bg-white/5 p-3">
+      </nav>
+      <div className="border-t border-slate-200 p-4">
+        <div className="flex items-center gap-3 rounded-xl bg-navy-50 p-3">
           <Avatar
             src={user?.avatarUrl}
             name={user?.name}
@@ -142,13 +143,13 @@ export default function DashboardLayout() {
             rounded="full"
           />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-bold text-white">{user?.name ?? 'Landlord'}</p>
-            <p className="truncate text-[11px] text-navy-300">
+            <p className="truncate text-sm font-bold text-navy-800">{user?.name ?? 'Landlord'}</p>
+            <p className="truncate text-[11px] text-mut">
               {house ? house.name : 'No boarding house yet'}
               {planKey !== 'none' ? ` · ${planKey.charAt(0).toUpperCase() + planKey.slice(1)}` : ''}
             </p>
           </div>
-          <button onClick={handleLogout} className="rounded-lg p-2 text-navy-300 transition hover:bg-white/10 hover:text-white" aria-label="Log out">
+          <button onClick={handleLogout} className="rounded-lg p-2 text-mut transition hover:bg-navy-100 hover:text-navy-800" aria-label="Log out">
             <LogOut size={16} />
           </button>
         </div>
@@ -284,10 +285,16 @@ export default function DashboardLayout() {
               View public site
             </Link>
             <button
-              className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-navy-800 to-navy-600 text-sm font-bold text-white"
+              className="rounded-full"
               aria-label={user?.name ? `${user.name} profile` : 'Profile'}
             >
-              {initials(user?.name ?? 'Landlord')}
+              <Avatar
+                src={user?.avatarUrl}
+                name={user?.name}
+                color={user?.avatarColor}
+                className="h-10 w-10 text-sm"
+                rounded="full"
+              />
             </button>
             <button className="rounded-xl p-2 text-navy-700 transition hover:bg-navy-50 lg:hidden" aria-label="Close">
               <X size={18} className="opacity-0" />

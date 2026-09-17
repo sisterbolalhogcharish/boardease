@@ -79,6 +79,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         avatarColor: found.avatar_color || '#1E73E8',
         avatarUrl: found.avatar_url || undefined,
         phone: found.phone || undefined,
+        // Landlords: business name of their boarding house, so the Settings
+        // "Property / boarding house name" field prefills after re-login.
+        property: found.property || undefined,
       }
       setUser(authUser)
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(authUser))

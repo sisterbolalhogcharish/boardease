@@ -1,10 +1,12 @@
-import { Camera, Check, Download, Languages, Mail, Phone, Save, ShieldCheck, Trash2 } from 'lucide-react'
+import { Camera, Check, Download, Languages, Loader2, Mail, Phone, Save, ShieldCheck, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useLanguage, type LangCode } from '../../lib/i18n'
 import { useAuth } from '../../lib/auth'
 import { Avatar } from '../../components/ui'
 import { useUpdateLandlordProfile, useUpdateProfile } from '../../lib/hooks'
-import { cn, fileToSquareDataUrl } from '../../lib/utils'
+import { cn } from '../../lib/utils'
+import { showToast } from '../../components/boarder/HouseActions'
+import { ImageCropperModal } from '../../components/ImageCropperModal'
 
 const TOGGLES = [
   { key: 'rentDue', label: 'Rent due reminders', desc: 'Notify 3 days before rent is due.' },
@@ -24,6 +26,9 @@ export default function Settings() {
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [photoBusy, setPhotoBusy] = useState(false)
+  // Pending photo awaiting the crop step — set by "Add/Change photo", consumed
+  // by the cropper's Apply, which hands back the final square data URL.
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null)
   const [prefs, setPrefs] = useState<Record<string, boolean>>({
     rentDue: true,
     late: true,
@@ -61,18 +66,25 @@ export default function Settings() {
     }
   }
 
-  const onPhotoChosen = async (e: ChangeEvent<HTMLInputElement>) => {
+  const onPhotoChosen = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = ''
-    if (!file || !user) return
+    if (!file) return
     setNotice('')
     setError('')
+    // Hand off to the crop step; upload happens on Apply.
+    setPendingPhoto(file)
+  }
+
+  const applyCroppedPhoto = async (dataUrl: string) => {
+    if (!user) return
     setPhotoBusy(true)
     try {
-      const dataUrl = await fileToSquareDataUrl(file)
       await runProfileMutation({ userId: user.id.toString(), avatarUrl: dataUrl })
       updateUser({ avatarUrl: dataUrl })
+      setPendingPhoto(null)
       setNotice('Profile photo updated.')
+      showToast('Profile photo updated.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update your profile photo.')
     } finally {
@@ -89,6 +101,7 @@ export default function Settings() {
       await runProfileMutation({ userId: user.id.toString(), avatarUrl: '' })
       updateUser({ avatarUrl: undefined })
       setNotice('Profile photo removed.')
+      showToast('Profile photo removed.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not remove your profile photo.')
     } finally {
@@ -109,7 +122,9 @@ export default function Settings() {
         userId: user.id.toString(),
         name: form.name.trim(),
         phone: form.phone.trim() || undefined,
-        property: form.property.trim() || undefined,
+        // Sent even when empty so clearing the field actually saves —
+        // `undefined` would be dropped from the JSON payload entirely.
+        property: form.property.trim(),
       })
       updateUser({
         name: form.name.trim(),
@@ -193,7 +208,8 @@ export default function Settings() {
                 disabled={photoBusy}
                 className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-navy-800 transition hover:border-brand-300 hover:text-brand-600 disabled:opacity-60"
               >
-                <Camera size={14} /> {user?.avatarUrl ? 'Change photo' : 'Add photo'}
+                {photoBusy ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
+                {photoBusy ? 'Uploading…' : user?.avatarUrl ? 'Change photo' : 'Add photo'}
               </button>
               {user?.avatarUrl && (
                 <button
@@ -206,6 +222,15 @@ export default function Settings() {
                 </button>
               )}
             </div>
+
+            {/* Square crop step — upload only happens after "Crop & save". */}
+            <ImageCropperModal
+              file={pendingPhoto}
+              open={pendingPhoto !== null}
+              busy={photoBusy}
+              onClose={() => setPendingPhoto(null)}
+              onApply={applyCroppedPhoto}
+            />
             {user?.avatarUrl && <p className="mt-2 text-[11px] text-mut">A profile photo is attached to this account.</p>}
             {!user?.avatarUrl && (
               <p className="mt-2 text-[11px] text-mut">No profile photo yet. Add one and your avatar updates everywhere.</p>
