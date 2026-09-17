@@ -20,7 +20,7 @@ import { useFeaturedHouses, useLocations, usePrefetchSearch, useTestimonials } f
 import { useLanguage } from '../../lib/i18n'
 import { cn, peso } from '../../lib/utils'
 import HouseCard from '../HouseCard'
-import { HouseImage, Reveal, SectionHeading, Skeleton } from '../ui'
+import { Avatar, HouseImage, Reveal, SectionHeading, Skeleton } from '../ui'
 
 /* ------------------------------------------------------------------ */
 /*  Featured houses                                                    */
@@ -274,6 +274,8 @@ interface TestimonialCard {
   role: string
   color: string
   rating: number
+  /** Uploaded profile photo — the initials bubble is only a fallback. */
+  avatarUrl?: string
 }
 
 export function Testimonials() {
@@ -287,6 +289,7 @@ export function Testimonials() {
     role: r.role,
     color: r.avatarColor,
     rating: r.rating,
+    avatarUrl: r.avatarUrl || undefined,
   }))
   const items = live.length > 0 ? live : FALLBACK_TESTIMONIALS.map((f, i) => ({ key: `${f.name}-${i}`, rating: 5, ...f }))
   return <TestimonialCards items={items} />
@@ -319,12 +322,12 @@ function TestimonialCards({ items }: { items: TestimonialCard[] }) {
                 </div>
                 <blockquote className="mt-4 flex-1 text-[15px] leading-relaxed text-navy-700">"{t.quote}"</blockquote>
                 <figcaption className="mt-6 flex items-center gap-3 border-t border-slate-100 pt-4">
-                  <span
-                    className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white"
-                    style={{ backgroundColor: t.color }}
-                  >
-                    {t.name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
-                  </span>
+                  <Avatar
+                    src={t.avatarUrl}
+                    name={t.name}
+                    color={t.color}
+                    className="h-10 w-10 text-sm"
+                  />
                   <div>
                     <p className="text-sm font-bold text-navy-800">{t.name}</p>
                     <p className="text-xs text-ink">{t.role}</p>
