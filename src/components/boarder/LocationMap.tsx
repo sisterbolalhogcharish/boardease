@@ -41,22 +41,31 @@ export function googleStreetViewUrl(loc: MapLocation): string | null {
 /**
  * Panorama for the *inline* Street View tab.
  *
- * The Google Maps Embed API is the only supported way to iframe a panorama and
- * it requires a billed API key, so this returns null unless the app is
- * configured with `VITE_GOOGLE_MAPS_API_KEY`. Without a key the UI falls back
- * to the keyless external link above — the app must keep working with no key.
+ * Preferred: the Google Maps Embed API — the only *officially* supported way
+ * to iframe a panorama — used when the app is configured with
+ * `VITE_GOOGLE_MAPS_API_KEY`.
+ *
+ * Without a key we fall back to Google's legacy keyless embed
+ * (`output=svembed`), which still serves an interactive panorama in an iframe.
+ * That keeps Street View inline instead of punting the user to a new tab, and
+ * the app keeps working with no key configured.
  */
 export function googleStreetViewEmbedUrl(loc: MapLocation): string | null {
+  if (!hasCoordinates(loc)) return null
   const key = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined
-  if (!key || !hasCoordinates(loc)) return null
-  const params = new URLSearchParams({
-    key,
-    location: `${loc.lat},${loc.lng}`,
-    heading: '0',
-    pitch: '0',
-    fov: '90',
-  })
-  return `https://www.google.com/maps/embed/v1/streetview?${params.toString()}`
+  if (key) {
+    const params = new URLSearchParams({
+      key,
+      location: `${loc.lat},${loc.lng}`,
+      heading: '0',
+      pitch: '0',
+      fov: '90',
+    })
+    return `https://www.google.com/maps/embed/v1/streetview?${params.toString()}`
+  }
+  // Keyless legacy embed: `cbll` is the panorama location, `cbp` sets the
+  // camera (heading 0, straight-on pitch, wide field of view).
+  return `https://maps.google.com/maps?q=&layer=c&cbll=${encodeURIComponent(`${loc.lat},${loc.lng}`)}&cbp=11,0,0,0,0&output=svembed`
 }
 
 /**
@@ -140,33 +149,10 @@ export default function LocationMap({
           style={{ height }}
           loading="lazy"
           allowFullScreen
+          referrerPolicy="no-referrer-when-downgrade"
           src={streetViewEmbed}
         />
-      ) : (
-        streetViewUrl && (
-          <div className="flex flex-col items-center justify-center px-6 py-10 text-center" style={{ minHeight: height }}>
-            <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-navy-50 text-navy-500">
-              <PersonStanding size={22} />
-            </span>
-            <p className="font-semibold text-navy-800">Look around before you visit</p>
-            <p className="mt-1 max-w-md text-sm text-ink">
-              Street View opens in Google Maps at this boarding house&apos;s exact coordinates, so you can see the street,
-              the entrance, and nearby landmarks.
-            </p>
-            <a
-              href={streetViewUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-brand-600"
-            >
-              <PersonStanding size={14} /> Open Street View
-            </a>
-            <p className="mt-3 max-w-sm text-[11px] text-mut">
-              Google only photographs roads it has covered, so some streets may not have imagery yet.
-            </p>
-          </div>
-        )
-      )}
+      ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
         <p className="flex min-w-0 items-center gap-1.5 text-xs text-ink">
@@ -174,16 +160,6 @@ export default function LocationMap({
           <span className="truncate">{location.address || location.name}</span>
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          {streetViewUrl && (
-            <a
-              href={streetViewUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-navy-700 transition hover:border-brand-300 hover:text-brand-500"
-            >
-              <PersonStanding size={12} /> Street View
-            </a>
-          )}
           <a
             href={googleMapsSearchUrl(location)}
             target="_blank"
