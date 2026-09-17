@@ -235,6 +235,147 @@ app.post('/api/auth/register', async (req, res) => {
 })
 
 /* ================================================================
+   DELETE ACCOUNT (boarder self-service)
+   ================================================================ */
+app.delete('/api/auth/account', async (req, res) => {
+  try {
+    const { userId } = req.body || {}
+    const id = parseInt(userId)
+    if (!id) return res.status(400).json({ error: 'userId is required' })
+
+    const [rows] = await pool.query('SELECT id, name, email, role FROM users WHERE id = ?', [id])
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Account not found. Sign in and try again.' })
+    }
+    // Owner accounts hold live listings, boarders and rent records — they are
+    // off-boarded by BoardEase administration instead of self-service.
+    if (rows[0].role !== 'boarder') {
+      return res.status(403).json({ error: 'Only boarder accounts can be deleted here.' })
+    }
+
+    const conn = await pool.getConnection()
+    try {
+      await conn.beginTransaction()
+
+      // Snapshot what is about to be removed so a receipt can be archived —
+      // once the user row is gone, this data no longer exists anywhere.
+      const [cRes] = await conn.query('SELECT COUNT(*) AS n FROM reservations WHERE boarder_id = ?', [id])
+      const [cRent] = await conn.query('SELECT COUNT(*) AS n FROM boarder_rentals WHERE boarder_id = ?', [id])
+      const [cRev] = await conn.query('SELECT COUNT(*) AS n FROM reviews WHERE boarder_id = ?', [id])
+      const [cFav] = await conn.query('SELECT COUNT(*) AS n FROM favorites WHERE user_id = ?', [id])
+      const [cMsg] = await conn.query(
+        `SELECT COUNT(*) AS n FROM messages m
+         JOIN conversations c ON c.id = m.conversation_id
+         WHERE c.boarder_id = ?`,
+        [id]
+      )
+
+      // Free up the beds this boarder still occupies so house availability
+      // stays truthful after the account is gone.
+      const [activeRentals] = await conn.query(
+        "SELECT room_id, house_id FROM boarder_rentals WHERE boarder_id = ? AND status IN ('active','notice','expiring')",
+        [id]
+      )
+      for (const r of activeRentals) {
+        await conn.query('UPDATE rooms SET occupied = GREATEST(occupied - 1, 0) WHERE id = ?', [r.room_id])
+        await conn.query('UPDATE boarding_houses SET occupied_rooms = GREATEST(occupied_rooms - 1, 0) WHERE id = ?', [r.house_id])
+      }
+
+      // Everything that hangs off the boarder id, then the account itself.
+      // One transaction: a half-deleted account would be worse than none.
+      await conn.query(
+        `DELETE m FROM messages m
+         JOIN conversations c ON c.id = m.conversation_id
+         WHERE c.boarder_id = ?`,
+        [id]
+      )
+      await conn.query('DELETE FROM conversations WHERE boarder_id = ?', [id])
+      await conn.query(
+        `DELETE p FROM payments p
+         JOIN boarder_rentals br ON br.id = p.rental_id
+         WHERE br.boarder_id = ?`,
+        [id]
+      )
+      await conn.query('DELETE FROM boarder_rentals WHERE boarder_id = ?', [id])
+      await conn.query('DELETE FROM reservations WHERE boarder_id = ?', [id])
+      // Recompute the public rating of every house this boarder reviewed,
+      // otherwise the deleted reviews would keep inflating the listing.
+      const [reviewedHouses] = await conn.query('SELECT DISTINCT house_id FROM reviews WHERE boarder_id = ?', [id])
+      await conn.query('DELETE FROM reviews WHERE boarder_id = ?', [id])
+      for (const rh of reviewedHouses) {
+        const [[agg]] = await conn.query(
+          'SELECT COALESCE(AVG(rating), 0) AS avg_rating, COUNT(*) AS n FROM reviews WHERE house_id = ?',
+          [rh.house_id]
+        )
+        await conn.query('UPDATE boarding_houses SET rating = ?, reviews_count = ? WHERE id = ?', [
+          parseFloat(agg.avg_rating).toFixed(1),
+          agg.n,
+          rh.house_id,
+        ])
+      }
+      await conn.query('DELETE FROM favorites WHERE user_id = ?', [id])
+      // favorite_views is created on boot; an older database may not have it
+      // yet. Its absence must not roll back the whole deletion.
+      try {
+        await conn.query('DELETE FROM favorite_views WHERE user_id = ?', [id])
+      } catch (fvErr) {
+        if (fvErr.code !== 'ER_NO_SUCH_TABLE') throw fvErr
+      }
+      await conn.query('DELETE FROM notifications WHERE user_id = ?', [id])
+      await conn.query('DELETE FROM boarder_profiles WHERE user_id = ?', [id])
+      await conn.query('DELETE FROM users WHERE id = ? AND role = "boarder"', [id])
+
+      // Archive the deletion receipt — the permanent record of this request.
+      // Its absence (older database) must not block the deletion itself.
+      try {
+        await conn.query(
+          `INSERT INTO account_deletion_receipts
+            (user_id, name, email, role, reservations_count, rentals_count, reviews_count, favorites_count, messages_count)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            id,
+            rows[0].name || null,
+            rows[0].email,
+            rows[0].role,
+            Number(cRes[0]?.n || 0),
+            Number(cRent[0]?.n || 0),
+            Number(cRev[0]?.n || 0),
+            Number(cFav[0]?.n || 0),
+            Number(cMsg[0]?.n || 0),
+          ]
+        )
+      } catch (rcptErr) {
+        if (rcptErr.code !== 'ER_NO_SUCH_TABLE') throw rcptErr
+      }
+
+      await conn.commit()
+
+      // Notify every admin account for record-keeping — the deleted user can
+      // no longer receive notifications themselves.
+      try {
+        const [admins] = await pool.query("SELECT id FROM users WHERE role = 'admin'")
+        const summary = `${rows[0].name || rows[0].email} (${rows[0].email}) deleted their boarder account. A deletion receipt was archived in the Admin console.`
+        for (const a of admins) {
+          await insertNotification(a.id, 'contract', 'Boarder account deleted', summary)
+        }
+      } catch (notifErr) {
+        console.error('Admin deletion notification failed:', notifErr.message)
+      }
+
+      res.json({ ok: true })
+    } catch (txErr) {
+      await conn.rollback()
+      throw txErr
+    } finally {
+      conn.release()
+    }
+  } catch (err) {
+    console.error('Delete account error:', err)
+    res.status(500).json({ error: dbErrorMessage(err) })
+  }
+})
+
+/* ================================================================
    LANDLORD SIGN UP (self-registration with location & documents)
    ================================================================ */
 app.post('/api/auth/landlord-register', async (req, res) => {
@@ -2575,6 +2716,30 @@ async function ensureSchema() {
   }
 
   try {
+    /* Account-deletion receipts: when a boarder deletes their account, a
+       receipt of what was removed is archived here for record-keeping — the
+       user row itself is gone, so this is the only trace left. */
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS account_deletion_receipts (
+        id int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        user_id int(11) NOT NULL,
+        name varchar(255) DEFAULT NULL,
+        email varchar(255) NOT NULL,
+        role varchar(20) NOT NULL DEFAULT 'boarder',
+        reservations_count int(11) NOT NULL DEFAULT 0,
+        rentals_count int(11) NOT NULL DEFAULT 0,
+        reviews_count int(11) NOT NULL DEFAULT 0,
+        favorites_count int(11) NOT NULL DEFAULT 0,
+        messages_count int(11) NOT NULL DEFAULT 0,
+        requested_at timestamp NOT NULL DEFAULT current_timestamp(),
+        KEY user_id (user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `)
+  } catch (err) {
+    console.warn('account_deletion_receipts schema check skipped:', err.message)
+  }
+
+  try {
     /* `landlords.subscription` shipped as enum('none','starter',...) in an older
        dump, while every part of the app writes 'basic' — so choosing the Basic
        plan either errored or stored an invalid value. Widen it to the set the
@@ -2669,6 +2834,34 @@ const RECEIPT_SELECT = `
   LEFT JOIN landlords l ON l.id = r.landlord_id
   LEFT JOIN users u ON u.id = l.user_id
 `
+
+// Recent account-deletion receipts (admin record-keeping).
+app.get('/api/admin/deletion-receipts', async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT * FROM account_deletion_receipts ORDER BY requested_at DESC LIMIT 50'
+    )
+    res.json(
+      rows.map((r) => ({
+        id: String(r.id),
+        userId: String(r.user_id),
+        name: r.name || '',
+        email: r.email,
+        role: r.role,
+        reservations: r.reservations_count,
+        rentals: r.rentals_count,
+        reviews: r.reviews_count,
+        favorites: r.favorites_count,
+        messages: r.messages_count,
+        requestedAt: r.requested_at ? new Date(r.requested_at).toISOString() : '',
+      }))
+    )
+  } catch (err) {
+    if (err.code === 'ER_NO_SUCH_TABLE') return res.json([])
+    console.error('Deletion receipts error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
 
 // Admin stats
 app.get('/api/admin/stats', async (req, res) => {

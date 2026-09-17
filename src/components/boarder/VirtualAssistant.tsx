@@ -220,7 +220,7 @@ export default function VirtualAssistant() {
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label={open ? 'Close BoardEase assistant' : 'Open BoardEase Virtual Boarding Assistant'}
-        className="fixed bottom-4 right-4 z-[92] flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-mint-400 text-white shadow-float transition hover:scale-105"
+        className="fixed bottom-4 right-4 z-[92] flex h-14 w-14 items-center justify-center rounded-full bg-brand-500 text-white shadow-float transition hover:scale-105"
       >
         {open ? <X size={22} /> : <MessageCircle size={22} />}
         {!open && <span className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full bg-mint-400 ring-2 ring-white" />}
@@ -238,7 +238,7 @@ export default function VirtualAssistant() {
             aria-label="BoardEase Virtual Boarding Assistant"
           >
             {/* Header */}
-            <div className="flex items-center gap-3 bg-gradient-to-br from-navy-800 to-brand-600 px-4 py-3.5 text-white">
+            <div className="flex items-center gap-3 bg-navy-800 px-4 py-3.5 text-white">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15">
                 <Bot size={18} />
               </span>

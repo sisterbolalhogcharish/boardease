@@ -15,7 +15,6 @@ import { useState, type ComponentType } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import NotificationBell from '../../components/boarder/NotificationBell'
 import ProfileMenu from '../../components/boarder/ProfileMenu'
-import { Avatar } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
 import { useCompare } from '../../lib/compare'
 import { useConversations, useReservations, useUnviewedFavorites } from '../../lib/hooks'
@@ -98,7 +97,7 @@ export default function BoarderDashboardLayout() {
                 <span
                   className={cn(
                     'flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold',
-                    active ? 'bg-white/25 text-white ring-1 ring-white/30' : 'bg-mint-100 text-mint-700',
+                    active ? 'bg-white/25 text-white ring-1 ring-white/30' : 'bg-brand-100 text-brand-700',
                   )}
                 >
                   {item.badge > 99 ? '99+' : item.badge}
@@ -110,19 +109,8 @@ export default function BoarderDashboardLayout() {
       </nav>
 
       <div className="border-t border-slate-200/70 p-4">
-        <div className="flex items-center gap-3 rounded-xl bg-brand-50/70 p-3 ring-1 ring-brand-100">
-          <Avatar
-            src={user?.avatarUrl}
-            name={user?.name}
-            color={user?.avatarColor}
-            className="h-9 w-9 text-sm shadow-sm"
-            rounded="full"
-          />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-bold text-navy-800">{user?.name}</p>
-            <p className="truncate text-[11px] text-navy-400">{user?.email}</p>
-          </div>
-        </div>
+        {/* Profile card opens the account menu (log out / delete account). */}
+        <ProfileMenu variant="card" />
       </div>
     </div>
   )

@@ -221,7 +221,7 @@ export default function AIAssistant() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
         <div className="flex items-center gap-3">
-          <span className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-mint-400 to-brand-500 text-white">
+          <span className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500 text-white">
             <Bot size={20} />
             <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-mint-400 ring-2 ring-white" />
           </span>
@@ -250,7 +250,7 @@ export default function AIAssistant() {
             <span
               className={cn(
                 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white',
-                m.role === 'user' ? 'bg-gradient-to-br from-navy-800 to-navy-600' : 'bg-gradient-to-br from-mint-400 to-brand-500',
+                m.role === 'user' ? 'bg-navy-800' : 'bg-brand-500',
               )}
             >
               {m.role === 'user' ? <User size={15} /> : <Bot size={15} />}
@@ -274,7 +274,7 @@ export default function AIAssistant() {
 
         {typing && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-mint-400 to-brand-500 text-white">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-500 text-white">
               <Bot size={15} />
             </span>
             <div className="flex items-center gap-1.5 rounded-2xl rounded-tl-md border border-slate-100 bg-white px-4 py-3 shadow-sm">

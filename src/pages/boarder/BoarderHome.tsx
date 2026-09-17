@@ -309,7 +309,7 @@ export default function BoarderHome() {
             </Link>
             <Link
               to="/boarder/messages"
-              className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-navy-800 transition hover:border-mint-300 hover:text-mint-600"
+              className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-navy-800 transition hover:border-brand-300 hover:text-brand-500"
             >
               Message landlord
             </Link>

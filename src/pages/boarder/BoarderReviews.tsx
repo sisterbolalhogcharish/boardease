@@ -256,8 +256,8 @@ export default function BoarderReviews() {
               </div>
 
               {r.reply && (
-                <div className="mt-4 rounded-xl border border-mint-100 bg-mint-50/60 p-4">
-                  <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-mint-600">
+                <div className="mt-4 rounded-xl border border-brand-100 bg-brand-50/60 p-4">
+                  <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-600">
                     <MessageCircle size={13} /> Owner reply
                   </p>
                   <p className="mt-1.5 text-sm text-ink">{r.reply}</p>

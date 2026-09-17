@@ -1,9 +1,10 @@
 import { motion } from 'framer-motion'
-import { CheckCircle, Clock, MessageSquare, TrendingUp, Users } from 'lucide-react'
+import { CheckCircle, Clock, MessageSquare, Trash2, TrendingUp, Users } from 'lucide-react'
 import { StatCard } from '../../components/ui'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { cn } from '../../lib/utils'
+import { getDeletionReceipts } from '../../lib/api'
+import { cn, timeAgo } from '../../lib/utils'
 
 async function fetchAdminStats() {
   const res = await fetch('/api/admin/stats')
@@ -20,6 +21,7 @@ async function fetchPendingReceipts() {
 export default function AdminOverview() {
   const { data: stats, isLoading: statsLoading } = useQuery({ queryKey: ['admin-stats'], queryFn: fetchAdminStats })
   const { data: pending } = useQuery({ queryKey: ['admin-pending-receipts'], queryFn: fetchPendingReceipts })
+  const { data: deletions } = useQuery({ queryKey: ['admin-deletion-receipts'], queryFn: getDeletionReceipts })
 
   return (
     <div className="space-y-6">
@@ -138,6 +140,50 @@ export default function AdminOverview() {
               ))
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Archived account-deletion receipts */}
+      <div className="rounded-[18px] border border-slate-100 bg-white p-6 shadow-card">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-danger">
+            <Trash2 size={19} />
+          </span>
+          <div>
+            <h3 className="font-bold text-navy-800">Deleted Accounts</h3>
+            <p className="mt-0.5 text-xs text-mut">
+              Archived receipts of boarders who deleted their accounts — kept for record-keeping after the data is gone.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 space-y-3">
+          {!deletions || deletions.length === 0 ? (
+            <p className="rounded-xl bg-surface px-4 py-6 text-center text-sm text-mut">No accounts have been deleted.</p>
+          ) : (
+            deletions.map((d) => (
+              <div
+                key={d.id}
+                className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 p-3 transition hover:border-slate-200"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-danger">
+                  <Trash2 size={16} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-navy-800">
+                    {d.name || 'Boarder'} <span className="font-normal text-mut">· {d.email}</span>
+                  </p>
+                  <p className="text-[11px] text-mut">
+                    {d.reservations} reservation{d.reservations === 1 ? '' : 's'} · {d.rentals} rental{d.rentals === 1 ? '' : 's'} ·{' '}
+                    {d.reviews} review{d.reviews === 1 ? '' : 's'} · {d.favorites} favorite{d.favorites === 1 ? '' : 's'} ·{' '}
+                    {d.messages} message{d.messages === 1 ? '' : 's'} removed
+                  </p>
+                </div>
+                <span className="shrink-0 text-[11px] font-medium text-mut">
+                  {d.requestedAt ? timeAgo(d.requestedAt) : ''}
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

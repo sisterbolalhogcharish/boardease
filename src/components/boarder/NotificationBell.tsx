@@ -8,7 +8,7 @@ import { Spinner } from '../ui'
 
 const TYPE_META: Record<string, { icon: ReactNode; cls: string }> = {
   reservation: { icon: <CalendarClock size={14} />, cls: 'bg-brand-50 text-brand-500' },
-  message: { icon: <MessageCircle size={14} />, cls: 'bg-mint-50 text-mint-600' },
+  message: { icon: <MessageCircle size={14} />, cls: 'bg-brand-50 text-brand-500' },
   availability: { icon: <DoorOpen size={14} />, cls: 'bg-navy-50 text-navy-800' },
   review: { icon: <Star size={14} />, cls: 'bg-amber-50 text-amber-soft' },
   'rent-due': { icon: <CreditCard size={14} />, cls: 'bg-amber-50 text-amber-soft' },
@@ -59,7 +59,7 @@ export default function NotificationBell({ userId }: { userId?: string }) {
     <div className="relative" data-notif-menu>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-navy-700 transition hover:border-mint-400 hover:text-mint-600"
+        className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-navy-700 transition hover:border-brand-400 hover:text-brand-500"
         aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
         aria-expanded={open}
         aria-haspopup="true"

@@ -386,6 +386,25 @@ export async function sendSupportMessage(input: {
 /*  Admin — receipts & support inbox                                   */
 /* ------------------------------------------------------------------ */
 
+/** Archived record of a boarder account deletion (audit trail). */
+export interface DeletionReceipt {
+  id: string
+  userId: string
+  name: string
+  email: string
+  role: string
+  reservations: number
+  rentals: number
+  reviews: number
+  favorites: number
+  messages: number
+  requestedAt: string
+}
+
+export async function getDeletionReceipts(): Promise<DeletionReceipt[]> {
+  return fetchJSON<DeletionReceipt[]>('/admin/deletion-receipts')
+}
+
 export async function getAdminReceipts(status?: string): Promise<SubscriptionReceipt[]> {
   const qs = status && status !== 'all' ? `?status=${status}` : ''
   return fetchJSON<SubscriptionReceipt[]>(`/admin/receipts${qs}`)
@@ -435,6 +454,15 @@ export async function registerAPI(input: RegisterInput) {
   return fetchJSON<any>('/auth/register', {
     method: 'POST',
     body: JSON.stringify({ ...input, role: input.role ?? 'boarder' }),
+  })
+}
+
+/** Permanently deletes the signed-in boarder's account and all of their data.
+ *  Only boarder accounts may self-delete; the server rejects anything else. */
+export async function deleteAccountAPI(userId: number | string) {
+  return fetchJSON<{ ok: true }>('/auth/account', {
+    method: 'DELETE',
+    body: JSON.stringify({ userId }),
   })
 }
 

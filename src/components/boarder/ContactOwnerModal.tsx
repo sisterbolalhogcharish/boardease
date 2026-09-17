@@ -68,7 +68,7 @@ export default function ContactOwnerModal({
           <motion.span
             initial={{ scale: 0.85, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="flex h-14 w-14 items-center justify-center rounded-full bg-mint-50 text-mint-600"
+            className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 text-brand-500"
           >
             <Send size={22} />
           </motion.span>

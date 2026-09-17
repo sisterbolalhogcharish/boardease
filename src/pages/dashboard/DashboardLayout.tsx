@@ -57,6 +57,7 @@ const NOTIF_ICON: Record<string, string> = {
   occupancy: 'bg-navy-50 text-navy-800',
   review: 'bg-amber-50 text-amber-soft',
   subscription: 'bg-mint-50 text-mint-600',
+  message: 'bg-brand-50 text-brand-500',
 }
 
 export default function DashboardLayout() {
@@ -121,10 +122,10 @@ export default function DashboardLayout() {
             to="/dashboard/ai"
             onClick={closeMenu}
             className={cn(
-              'group mt-4 flex items-center gap-3 rounded-xl border border-mint-400/25 bg-gradient-to-r from-mint-400/15 to-brand-500/15 px-3.5 py-3 text-sm font-semibold transition-all duration-200',
+              'group mt-4 flex items-center gap-3 rounded-xl border border-brand-100 bg-brand-50/60 px-3.5 py-3 text-sm font-semibold transition-all duration-200',
               pathname.startsWith('/dashboard/ai')
-                ? 'border-mint-400/50 from-mint-400/30 to-brand-500/30 text-mint-700'
-                : 'text-mint-600 hover:from-mint-400/25 hover:to-brand-500/25 hover:text-mint-700',
+                ? 'border-brand-300 bg-brand-100/70 text-brand-700'
+                : 'text-brand-600 hover:bg-brand-100/60 hover:text-brand-700',
             )}
           >
             <Bot size={19} />

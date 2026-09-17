@@ -147,7 +147,7 @@ export default function MessageCenter({
         {!selected ? (
           <div className="flex flex-1 items-center justify-center p-8 text-center">
             <div>
-              <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+              <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-500">
                 <MessageCircle size={22} />
               </span>
               <p className="font-semibold text-navy-800">Select a conversation</p>
