@@ -1621,6 +1621,111 @@ app.get('/api/reviews', async (req, res) => {
 })
 
 /* ================================================================
+   PLATFORM REVIEWS ("Rate us" → landing-page testimonials)
+   Every account may rate BoardEase once; sending again updates it.
+   ================================================================ */
+const TESTIMONIAL_LIMIT = 3
+
+/** Owner of a feedback row, described the same way the landing page shows it:
+ *  students get "BS Pharmacy · Siquijor State College", landlords get
+ *  "Owner · Sunset Boarding House, San Juan". Falls back to the plain role. */
+function testimonialRoleLabel(row) {
+  if (row.role === 'landlord') {
+    if (row.house_name) return `Owner · ${row.house_name}${row.municipality ? `, ${row.municipality}` : ''}`
+    return 'Landlord · BoardEase'
+  }
+  if (row.course && row.school) return `${row.course} · ${row.school}`
+  if (row.school) return row.school
+  return 'Boarder · BoardEase'
+}
+
+app.get('/api/platform/reviews/featured', async (req, res) => {
+  try {
+    // Only feedback that reads well on the home page: a written comment and a
+    // positive rating. Newest first so the section stays current.
+    const [rows] = await pool.query(`
+      SELECT pr.id, pr.rating, pr.comment, pr.created_at, pr.role,
+        u.name, u.avatar_color, u.avatar_url,
+        bp.course, bp.school,
+        bh.name AS house_name, bh.municipality
+      FROM platform_reviews pr
+      JOIN users u ON u.id = pr.user_id
+      LEFT JOIN boarder_profiles bp ON bp.user_id = u.id
+      LEFT JOIN landlords l ON l.user_id = u.id
+      LEFT JOIN boarding_houses bh ON bh.landlord_id = l.id
+      WHERE pr.rating >= 4 AND pr.comment IS NOT NULL AND pr.comment <> ''
+      ORDER BY pr.created_at DESC
+      LIMIT ?
+    `, [TESTIMONIAL_LIMIT])
+    res.json(rows.map((r) => ({
+      id: String(r.id),
+      name: r.name || 'BoardEase user',
+      role: testimonialRoleLabel(r),
+      avatarColor: r.avatar_color || '#1E73E8',
+      avatarUrl: r.avatar_url || '',
+      rating: Number(r.rating) || 5,
+      comment: r.comment || '',
+      date: r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : '',
+    })))
+  } catch (err) {
+    console.error('Get testimonials error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+app.get('/api/platform/reviews', async (req, res) => {
+  try {
+    const { userId } = req.query
+    if (!userId) return res.status(400).json({ error: 'userId is required' })
+    const [rows] = await pool.query(
+      'SELECT id, rating, comment, created_at FROM platform_reviews WHERE user_id = ?',
+      [userId]
+    )
+    if (rows.length === 0) return res.json(null)
+    const r = rows[0]
+    res.json({
+      id: String(r.id),
+      rating: Number(r.rating) || 0,
+      comment: r.comment || '',
+      date: r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : '',
+    })
+  } catch (err) {
+    console.error('Get platform review error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+app.post('/api/platform/reviews', async (req, res) => {
+  try {
+    const { userId, rating, comment } = req.body
+    if (!userId) return res.status(400).json({ error: 'userId is required' })
+    const score = Number(rating)
+    if (!score || score < 1 || score > 5) return res.status(400).json({ error: 'Rating must be between 1 and 5' })
+    const text = String(comment || '').trim().slice(0, 600)
+    if (!text) return res.status(400).json({ error: 'Please write a short comment with your rating.' })
+
+    const [userRows] = await pool.query('SELECT role FROM users WHERE id = ?', [userId])
+    if (userRows.length === 0) return res.status(404).json({ error: 'Account not found' })
+    const role = userRows[0].role === 'landlord' ? 'landlord' : 'boarder'
+
+    const [existing] = await pool.query('SELECT id FROM platform_reviews WHERE user_id = ?', [userId])
+    if (existing.length > 0) {
+      await pool.query('UPDATE platform_reviews SET rating = ?, comment = ?, role = ? WHERE id = ?', [
+        score, text, role, existing[0].id,
+      ])
+    } else {
+      await pool.query('INSERT INTO platform_reviews (user_id, role, rating, comment) VALUES (?, ?, ?, ?)', [
+        userId, role, score, text,
+      ])
+    }
+    res.json({ ok: true, updated: existing.length > 0 })
+  } catch (err) {
+    console.error('Save platform review error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+/* ================================================================
    NOTIFICATIONS
    ================================================================ */
 app.get('/api/notifications', async (req, res) => {
@@ -2778,6 +2883,26 @@ async function ensureSchema() {
     `)
   } catch (err) {
     console.warn('subscription_receipts schema check skipped:', err.message)
+  }
+
+  try {
+    /* "Rate us" feedback from either portal. One row per account (UNIQUE
+       user_id) so re-sending updates the existing rating instead of stacking
+       duplicates; the landing page shows the newest positive ones. */
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS platform_reviews (
+        id int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        user_id int(11) NOT NULL,
+        role varchar(20) NOT NULL DEFAULT 'boarder',
+        rating tinyint(4) NOT NULL DEFAULT 5,
+        comment text DEFAULT NULL,
+        created_at timestamp NOT NULL DEFAULT current_timestamp(),
+        updated_at timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+        UNIQUE KEY user_id (user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `)
+  } catch (err) {
+    console.warn('platform_reviews schema check skipped:', err.message)
   }
 
   try {

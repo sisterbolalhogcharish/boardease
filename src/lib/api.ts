@@ -155,6 +155,49 @@ export async function getReviews(houseId?: string) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Platform feedback ("Rate us" → landing-page testimonials)          */
+/* ------------------------------------------------------------------ */
+export interface PlatformReview {
+  id: string
+  rating: number
+  comment: string
+  date: string
+}
+
+/** One testimonial card on the landing page, built from real platform feedback. */
+export interface Testimonial {
+  id: string
+  name: string
+  role: string
+  avatarColor: string
+  avatarUrl?: string
+  rating: number
+  comment: string
+  date: string
+}
+
+/** The signed-in user's own rating of BoardEase, or null if they have not rated yet. */
+export async function getMyPlatformReview(userId: string): Promise<PlatformReview | null> {
+  return fetchJSON<PlatformReview | null>(`/platform/reviews?userId=${encodeURIComponent(userId)}`)
+}
+
+export async function savePlatformReview(input: {
+  userId: string
+  rating: number
+  comment: string
+}): Promise<{ ok: boolean; updated: boolean }> {
+  return fetchJSON<{ ok: boolean; updated: boolean }>('/platform/reviews', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+/** Newest positive feedback, already limited by the server. */
+export async function getTestimonials(): Promise<Testimonial[]> {
+  return fetchJSON<Testimonial[]>('/platform/reviews/featured')
+}
+
+/* ------------------------------------------------------------------ */
 /*  Payments                                                           */
 /* ------------------------------------------------------------------ */
 export interface PaymentRow extends Payment {

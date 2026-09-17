@@ -9,6 +9,7 @@ import {
   Home,
   Menu,
   MessageCircle,
+  MessageSquareHeart,
   Star,
 } from 'lucide-react'
 import { useState, type ComponentType } from 'react'
@@ -51,6 +52,8 @@ export default function BoarderDashboardLayout() {
     { path: '/boarder/payments', label: 'My Payments', icon: CreditCard },
     { path: '/boarder/reviews', label: 'My Reviews', icon: Star },
     { path: '/boarder/messages', label: 'Messages', icon: MessageCircle, badge: unreadMessages || undefined },
+    // Feedback form; its rating + comment show on the home page testimonials.
+    { path: '/boarder/rate-us', label: 'Rate us', icon: MessageSquareHeart },
   ]
 
   const current = NAV.find((n) => (n.end ? pathname === n.path : pathname.startsWith(n.path))) ?? NAV[0]
