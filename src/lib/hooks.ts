@@ -48,6 +48,34 @@ export function useReviews(houseId?: string) {
   return useQuery({ queryKey: ['reviews', houseId], queryFn: () => api.getReviews(houseId) })
 }
 
+/* ------------------- Platform feedback ("Rate us") ------------------ */
+
+/** The signed-in user's own BoardEase rating, used to prefill the Rate us form. */
+export function useMyPlatformReview(userId?: string) {
+  return useQuery({
+    queryKey: ['platform-review', userId],
+    queryFn: () => api.getMyPlatformReview(userId!),
+    enabled: !!userId,
+  })
+}
+
+/** Newest positive feedback shown in the landing page testimonials section. */
+export function useTestimonials() {
+  return useQuery({ queryKey: ['testimonials'], queryFn: api.getTestimonials })
+}
+
+export function useSavePlatformReview(userId?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Parameters<typeof api.savePlatformReview>[0]) => api.savePlatformReview(input),
+    onSuccess: () => {
+      // The home page picks the new feedback up on its next visit.
+      qc.invalidateQueries({ queryKey: ['platform-review', userId] })
+      qc.invalidateQueries({ queryKey: ['testimonials'] })
+    },
+  })
+}
+
 /* --------------------- Owner-scoped landlord reads ------------------ */
 /*
  * These all pull the signed-in landlord's id from `LandlordHouseProvider` and

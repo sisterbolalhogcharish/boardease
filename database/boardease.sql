@@ -344,6 +344,19 @@ CREATE TABLE IF NOT EXISTS `landlord_documents` (
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Add platform feedback table if missing ("Rate us" → landing page testimonials)
+-- One row per account; re-sending updates it instead of stacking duplicates.
+CREATE TABLE IF NOT EXISTS `platform_reviews` (
+  `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `user_id` int(11) NOT NULL,
+  `role` varchar(20) NOT NULL DEFAULT 'boarder',
+  `rating` tinyint(4) NOT NULL DEFAULT 5,
+  `comment` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  UNIQUE KEY `user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 
 -- --------------------------------------------------------
 

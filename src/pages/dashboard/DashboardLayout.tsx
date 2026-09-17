@@ -16,6 +16,7 @@ import {
   LogOut,
   Menu,
   MessageCircle,
+  MessageSquareHeart,
   Receipt,
   Settings,
   Star,
@@ -52,6 +53,8 @@ const NAV = [
   { path: '/dashboard/subscription', label: 'Subscription', icon: Crown, always: true, end: true },
   { path: '/dashboard/subscription/history', label: 'Payment History', icon: Receipt },
   { path: '/dashboard/settings', label: 'Settings', icon: Settings },
+  // Always available feedback form; its rating + comment show on the home page.
+  { path: '/dashboard/rate-us', label: 'Rate us', icon: MessageSquareHeart, always: true },
 ]
 
 const NOTIF_ICON: Record<string, string> = {

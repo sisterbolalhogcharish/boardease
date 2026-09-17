@@ -41,6 +41,7 @@ import BoarderReservations from './pages/boarder/BoarderReservations'
 import BoarderMessages from './pages/boarder/BoarderMessages'
 import BoarderProfile from './pages/boarder/BoarderProfile'
 import VirtualAssistant from './components/boarder/VirtualAssistant'
+import RateUs from './components/RateUs'
 
 function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode; requiredRole?: 'landlord' | 'boarder' | 'admin' }) {
   const { user } = useAuth()
@@ -95,6 +96,8 @@ export default function App() {
         <Route path="reviews" element={<Reviews />} />
         <Route path="subscription" element={<Subscription />} />        <Route path="subscription/history" element={<SubscriptionHistory />} />
         <Route path="settings" element={<Settings />} />
+        {/* Platform feedback — its comment + stars feed the home page testimonials. */}
+        <Route path="rate-us" element={<RateUs />} />
         <Route path="ai" element={<AIAssistant />} />
       </Route>
 
@@ -132,6 +135,8 @@ export default function App() {
         <Route path="reviews" element={<BoarderReviews />} />
         <Route path="messages" element={<BoarderMessages />} />
         <Route path="profile" element={<BoarderProfile />} />
+        {/* Platform feedback — its comment + stars feed the home page testimonials. */}
+        <Route path="rate-us" element={<RateUs />} />
       </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -38,6 +38,39 @@ function StarPicker({ value, onChange }: { value: number; onChange: (v: number) 
   )
 }
 
+const EMPTY_CATEGORIES: BoarderReview['categories'] = {
+  cleanliness: 0,
+  safety: 0,
+  comfort: 0,
+  internet: 0,
+  owner: 0,
+  location: 0,
+  value: 0,
+}
+
+function CategoryPicker({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-xl bg-surface px-3 py-2">
+      <span className="text-xs font-medium text-ink">{label}</span>
+      <div className="flex gap-0.5" role="radiogroup" aria-label={`${label} rating`}>
+        {[1, 2, 3, 4, 5].map((s) => (
+          <button
+            key={s}
+            type="button"
+            role="radio"
+            aria-checked={value === s}
+            aria-label={`${label}: ${s} star${s === 1 ? '' : 's'}`}
+            onClick={() => onChange(s)}
+            className="rounded-md p-0.5 transition hover:scale-110"
+          >
+            <Star size={16} className={cn('fill-current transition-colors', s <= value ? 'text-amber-400' : 'text-slate-300')} />
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function BoarderReviews() {
   const { user } = useAuth()
   const userId = user?.id?.toString()
@@ -49,6 +82,7 @@ export default function BoarderReviews() {
   const [open, setOpen] = useState(false)
   const [houseId, setHouseId] = useState('')
   const [rating, setRating] = useState(0)
+  const [categories, setCategories] = useState<BoarderReview['categories']>(EMPTY_CATEGORIES)
   const [comment, setComment] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -63,9 +97,11 @@ export default function BoarderReviews() {
     if (review) {
       setHouseId(review.houseId)
       setRating(review.rating)
+      setCategories({ ...review.categories })
       setComment(review.comment)
     } else {
       setHouseId(accommodation?.houseId ?? '')
+      setCategories(EMPTY_CATEGORIES)
       setRating(0)
       setComment('')
     }
@@ -86,9 +122,14 @@ export default function BoarderReviews() {
       setError('Please write a short review.')
       return
     }
+    const unrated = CATEGORY_LABELS.filter((c) => categories[c.key] < 1)
+    if (unrated.length > 0) {
+      setError(`Please rate every category: ${unrated.map((c) => c.label).join(', ')}.`)
+      return
+    }
     setError('')
     try {
-      const res = await saveReview.mutateAsync({ userId: userId!, houseId, rating, comment: comment.trim() })
+      const res = await saveReview.mutateAsync({ userId: userId!, houseId, rating, comment: comment.trim(), categories })
       setNotice(res.updated ? 'Your review was updated.' : 'Review submitted — thank you for sharing!')
       setOpen(false)
     } catch (err) {
@@ -157,6 +198,7 @@ export default function BoarderReviews() {
                 setHouseId(e.target.value)
                 const existing = list.find((r) => r.houseId === e.target.value)
                 setRating(existing?.rating ?? 0)
+                setCategories(existing ? { ...existing.categories } : EMPTY_CATEGORIES)
                 setComment(existing?.comment ?? '')
               }}
               className="w-full cursor-pointer rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-navy-800 outline-none transition focus:border-brand-400"
@@ -175,6 +217,22 @@ export default function BoarderReviews() {
               Overall rating <span className="text-danger">*</span>
             </span>
             <StarPicker value={rating} onChange={setRating} />
+          </div>
+
+          <div>
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-mut">
+              Rate the details <span className="text-danger">*</span>
+            </span>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {CATEGORY_LABELS.map((c) => (
+                <CategoryPicker
+                  key={c.key}
+                  label={c.label}
+                  value={categories[c.key]}
+                  onChange={(v) => setCategories((prev) => ({ ...prev, [c.key]: v }))}
+                />
+              ))}
+            </div>
           </div>
 
           <div>

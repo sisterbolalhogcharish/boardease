@@ -7,6 +7,7 @@ import {
   IdCard,
   Lock,
   MapPin,
+  PersonStanding,
   Phone,
   Shield,
   Upload,
@@ -17,6 +18,7 @@ import { useState, useRef, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { registerLandlordAPI } from '../lib/api'
+import { googleStreetViewEmbedUrl, googleStreetViewUrl } from '../components/boarder/LocationMap'
 import { ImageCropperModal } from '../components/ImageCropperModal'
 import { cn } from '../lib/utils'
 
@@ -381,6 +383,11 @@ export default function LandlordSignup() {
     }
   }
 
+  // Street View for the pin the landlord picked. The keyless Maps URL always
+  // works; the inline panorama only loads when an Embed API key is configured.
+  const streetView = googleStreetViewUrl({ name: locationAddress, lat: locationLat, lng: locationLng })
+  const streetViewEmbed = googleStreetViewEmbedUrl({ name: locationAddress, lat: locationLat, lng: locationLng })
+
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-black/60 lg:flex-row">
       {/* ---------- Artwork background ---------- */}
@@ -600,37 +607,44 @@ export default function LandlordSignup() {
                   </svg>
                   My location
                 </button>
-                <button
-                  type="button"
-                  onClick={() => window.open(`https://www.google.com/maps/@${locationLat},${locationLng},3a,75y,90t/data=!3m6!1e1!3m4!1s!2e0!7i13312!8i6656`, '_blank')}
+                <a
+                  href={streetView!}
+                  target="_blank"
+                  rel="noreferrer"
                   className="flex items-center justify-center gap-2 rounded-xl border border-brand-400/30 bg-brand-500/10 px-4 py-2.5 text-sm font-semibold text-brand-300 transition hover:bg-brand-500/20 hover:text-brand-200"
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                  </svg>
+                  <PersonStanding size={16} />
                   Street View
-                </button>
+                </a>
               </div>
 
               {/* Street View Preview */}
-              {locationSaved && (
+              {locationSaved && streetView && (
                 <div className="relative rounded-2xl overflow-hidden border border-white/10">
-                  <iframe
-                    title="Street View Preview"
-                    width="100%"
-                    height="200"
-                    style={{ border: 0 }}
-                    loading="lazy"
-                    allowFullScreen
-                    src={`https://www.google.com/maps/embed?pb=!4v${Date.now()}!6m8!1m7!1s!2m2!1d${locationLat}!2d${locationLng}!3f0!4f0!5f0.7820865974627469`}
-                    className="rounded-2xl"
-                  />
+                  {streetViewEmbed ? (
+                    <iframe
+                      title="Street View Preview"
+                      width="100%"
+                      height="200"
+                      style={{ border: 0 }}
+                      loading="lazy"
+                      allowFullScreen
+                      src={streetViewEmbed}
+                      className="rounded-2xl"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center gap-1.5 px-5 py-6 text-center">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-navy-200">
+                        <PersonStanding size={20} />
+                      </span>
+                      <p className="text-sm font-semibold text-white">Check the street before you publish</p>
+                      <p className="max-w-xs text-xs text-navy-300">
+                        Opens Google Maps at the pin you picked, so you can confirm the exact entrance boarders should look for.
+                      </p>
+                    </div>
+                  )}
                   <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                      <circle cx="12" cy="12" r="3"/>
-                    </svg>
+                    <PersonStanding size={10} />
                     Street View Preview
                   </div>
                 </div>

@@ -16,11 +16,11 @@ import {
   Wifi,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { useFeaturedHouses, useLocations, usePrefetchSearch } from '../../lib/hooks'
+import { useFeaturedHouses, useLocations, usePrefetchSearch, useTestimonials } from '../../lib/hooks'
 import { useLanguage } from '../../lib/i18n'
 import { cn, peso } from '../../lib/utils'
 import HouseCard from '../HouseCard'
-import { HouseImage, Reveal, SectionHeading, Skeleton } from '../ui'
+import { Avatar, HouseImage, Reveal, SectionHeading, Skeleton } from '../ui'
 
 /* ------------------------------------------------------------------ */
 /*  Featured houses                                                    */
@@ -238,7 +238,12 @@ export function StatsBenefits() {
 /* ------------------------------------------------------------------ */
 /*  Testimonials                                                       */
 /* ------------------------------------------------------------------ */
-const TESTIMONIALS = [
+/**
+ * Only a fallback: the section prefers live feedback sent from the "Rate us"
+ * form in the landlord/boarder dashboards, and shows these seeded quotes when
+ * nobody has rated BoardEase yet so the page never looks broken.
+ */
+const FALLBACK_TESTIMONIALS = [
   {
     quote:
       'I found my dorm in Larena in one evening. The photos, ratings, and real reviews made it so easy to trust the place before I even visited.',
@@ -262,7 +267,35 @@ const TESTIMONIALS = [
   },
 ]
 
+interface TestimonialCard {
+  key: string
+  quote: string
+  name: string
+  role: string
+  color: string
+  rating: number
+  /** Uploaded profile photo — the initials bubble is only a fallback. */
+  avatarUrl?: string
+}
+
 export function Testimonials() {
+  const { data } = useTestimonials()
+  // Refetches on every visit to the landing page, so new feedback appears
+  // without a redeploy — no hardcoded reviews.
+  const live: TestimonialCard[] = (data ?? []).map((r) => ({
+    key: r.id,
+    quote: r.comment,
+    name: r.name,
+    role: r.role,
+    color: r.avatarColor,
+    rating: r.rating,
+    avatarUrl: r.avatarUrl || undefined,
+  }))
+  const items = live.length > 0 ? live : FALLBACK_TESTIMONIALS.map((f, i) => ({ key: `${f.name}-${i}`, rating: 5, ...f }))
+  return <TestimonialCards items={items} />
+}
+
+function TestimonialCards({ items }: { items: TestimonialCard[] }) {
   const { t } = useLanguage()
   return (
     <section className="bg-white py-20">
@@ -274,23 +307,27 @@ export function Testimonials() {
           subtitle={t('testimonials.subtitle')}
         />
         <div className="mt-12 grid gap-6 lg:grid-cols-3">
-          {TESTIMONIALS.map((t, i) => (
-            <Reveal key={t.name} delay={i * 0.08}>
+          {items.map((t, i) => (
+            <Reveal key={t.key} delay={i * 0.08}>
               <figure className="flex h-full flex-col rounded-[18px] border border-slate-100 bg-surface p-6 shadow-card transition duration-300 hover:-translate-y-1 hover:shadow-card-hover">
                 <Quote size={28} className="text-brand-200" />
                 <div className="mt-3 flex gap-0.5">
                   {Array.from({ length: 5 }).map((_, j) => (
-                    <Star key={j} size={15} className="fill-amber-400 text-amber-400" />
+                    <Star
+                      key={j}
+                      size={15}
+                      className={j < t.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}
+                    />
                   ))}
                 </div>
                 <blockquote className="mt-4 flex-1 text-[15px] leading-relaxed text-navy-700">"{t.quote}"</blockquote>
                 <figcaption className="mt-6 flex items-center gap-3 border-t border-slate-100 pt-4">
-                  <span
-                    className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white"
-                    style={{ backgroundColor: t.color }}
-                  >
-                    {t.name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
-                  </span>
+                  <Avatar
+                    src={t.avatarUrl}
+                    name={t.name}
+                    color={t.color}
+                    className="h-10 w-10 text-sm"
+                  />
                   <div>
                     <p className="text-sm font-bold text-navy-800">{t.name}</p>
                     <p className="text-xs text-ink">{t.role}</p>
