@@ -577,6 +577,19 @@ export async function addLandlordHouseImages(userId: number | string, images: st
   })
 }
 
+/** Replace one gallery photo in place (e.g. after a room renovation) — keeps
+ *  its position in the gallery, and the cover if it was the cover. */
+export async function updateLandlordHouseImage(
+  userId: number | string,
+  imageId: string,
+  image: string,
+): Promise<{ house: LandlordHouse }> {
+  return fetchJSON<{ house: LandlordHouse }>(`/landlord/house/images/${encodeURIComponent(imageId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ userId, image }),
+  })
+}
+
 /** Photo order is the gallery order — index 0 is the listing cover. */
 export async function reorderLandlordHouseImages(userId: number | string, ids: string[]): Promise<{ house: LandlordHouse }> {
   return fetchJSON<{ house: LandlordHouse }>('/landlord/house/images', {

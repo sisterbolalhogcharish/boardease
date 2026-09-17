@@ -1031,6 +1031,37 @@ app.put('/api/landlord/house/images', async (req, res) => {
   }
 })
 
+// Replace one photo in place (e.g. after a renovation) — same gallery slot,
+// same order, same cover status.
+app.put('/api/landlord/house/images/:id', async (req, res) => {
+  try {
+    const ctx = await ownerContextOrRespond(req, res, { needHouse: true })
+    if (!ctx) return
+
+    const image = req.body.image
+    if (!isHouseImageDataUrl(image)) {
+      return res.status(400).json({ error: 'Upload a JPG, JPEG, PNG, or WebP image.' })
+    }
+    if (image.length > 8 * 1024 * 1024) {
+      return res.status(400).json({ error: 'That photo must be 8 MB or smaller.' })
+    }
+
+    const [result] = await pool.query('UPDATE house_images SET image_url = ? WHERE id = ? AND house_id = ?', [
+      String(image).trim(),
+      req.params.id,
+      ctx.houseId,
+    ])
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'That photo is not part of your boarding house.' })
+    }
+
+    res.json({ house: await loadOwnerHouse(ctx.landlord) })
+  } catch (err) {
+    console.error('Replace house image error:', err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
 // Remove a photo.
 app.delete('/api/landlord/house/images/:id', async (req, res) => {
   try {
@@ -2382,9 +2413,19 @@ async function ensureSchema() {
   }
 
   try {
-    /* Landlord-uploaded house photos are stored as data URLs (there is no file
-       storage in this project yet), which do not fit the original
-       varchar(500). Widen it once so "My Boarding House" can save a gallery. */
+    /* Landlord house photos live in `house_images` as data URLs. The CREATE
+       TABLE in database/boardease.sql has this table, but a database created
+       from an older dump may not — create it on boot so photo uploads never
+       hit a missing-table error. */
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS house_images (
+        id int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        house_id int(11) NOT NULL,
+        image_url MEDIUMTEXT NOT NULL,
+        sort_order int(11) DEFAULT 0,
+        KEY house_id (house_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `)
     const [imgCol] = await pool.query(
       `SELECT DATA_TYPE FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'house_images' AND COLUMN_NAME = 'image_url'`

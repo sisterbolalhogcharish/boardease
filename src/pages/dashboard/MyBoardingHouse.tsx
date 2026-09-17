@@ -12,6 +12,7 @@ import {
   Lock,
   MapPin,
   Pencil,
+  Repeat,
   Plus,
   Save,
   Star,
@@ -22,6 +23,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { HouseImage, Spinner } from '../../components/ui'
+import { ImageCropperModal } from '../../components/ImageCropperModal'
 import { useLandlordHouse } from '../../lib/landlordHouse'
 import {
   useAddLandlordHouseImages,
@@ -32,6 +34,7 @@ import {
   useReorderLandlordHouseImages,
   useRooms,
   useSaveLandlordHouse,
+  useUpdateLandlordHouseImage,
   useUpdateRoom,
 } from '../../lib/hooks'
 import { usePlanFeatures } from '../../components/dashboard/PlanGate'
@@ -52,21 +55,14 @@ function isAllowedImage(file: File) {
   return byMime || byExt
 }
 
-function readImageFile(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    if (!isAllowedImage(file)) {
-      reject(new Error('Please upload a JPG, JPEG, PNG, or WebP image.'))
-      return
-    }
-    if (file.size > MAX_IMAGE_BYTES) {
-      reject(new Error(`${file.name} is larger than 4 MB.`))
-      return
-    }
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result || ''))
-    reader.onerror = () => reject(new Error(`Could not read ${file.name}.`))
-    reader.readAsDataURL(file)
-  })
+function validateImageFile(file: File) {
+  if (!isAllowedImage(file)) {
+    return 'Please upload a JPG, JPEG, PNG, or WebP image.'
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    return `${file.name} is larger than 4 MB.`
+  }
+  return ''
 }
 
 /* Siquijor's municipalities — offered as suggestions so a landlord is never
@@ -283,6 +279,7 @@ export default function MyBoardingHouse() {
   const addImages = useAddLandlordHouseImages()
   const reorderImages = useReorderLandlordHouseImages()
   const deleteImage = useDeleteLandlordHouseImage()
+  const updateImage = useUpdateLandlordHouseImage()
 
   // Rooms are what make "available" real: beds free = SUM(capacity) - SUM(occupied).
   const { data: rooms } = useRooms()
@@ -291,6 +288,10 @@ export default function MyBoardingHouse() {
   const deleteRoom = useDeleteRoom()
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  /** Photo picked for the crop step; null when no crop is in progress. The
+   *  id of the gallery photo being replaced travels alongside, if any. */
+  const [cropFile, setCropFile] = useState<File | null>(null)
+  const [replaceImageId, setReplaceImageId] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -404,24 +405,55 @@ export default function MyBoardingHouse() {
     }
   }
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
     e.target.value = ''
-    if (files.length === 0 || !userId) return
-
+    if (files.length === 0) return
+    const bad = files.find((f) => validateImageFile(f))
+    if (bad) {
+      setError(validateImageFile(bad)!)
+      return
+    }
     setError('')
     setNotice('')
+    // Hand off to the crop step (4:3 — the ratio of the public listing cards,
+    // so the picture is shown in full on Explore). Upload happens on Apply.
+    // `replaceImageId` is deliberately left alone: handleReplace sets it
+    // before opening this picker, and the modal close/apply handlers clear it.
+    setCropFile(files[0])
+  }
+
+  /** Plain "add" entry point — clears any pending replace so a cancelled
+   *  replace can never turn the next upload into an accidental overwrite. */
+  const openAddPhoto = () => {
+    setReplaceImageId(null)
+    fileInputRef.current?.click()
+  }
+
+  const handleReplace = (imageId: string) => {
+    setError('')
+    setNotice('')
+    setReplaceImageId(imageId)
+    fileInputRef.current?.click()
+  }
+
+  const applyCroppedImage = async (dataUrl: string) => {
+    if (!userId) return
     setUploading(true)
     try {
-      // Uploaded one at a time: a batch of 4 MB photos would blow past the
-      // API's request-body limit in a single JSON payload.
-      for (const file of files) {
-        const dataUrl = await readImageFile(file)
+      if (replaceImageId) {
+        // Renovation flow: overwrite the old photo in place, keeping its
+        // position (and the cover, if it was the cover).
+        await updateImage.mutateAsync({ userId, imageId: replaceImageId, image: dataUrl })
+        setNotice('Photo replaced.')
+      } else {
         await addImages.mutateAsync({ userId, images: [dataUrl] })
+        setNotice('Photo added.')
       }
-      setNotice(files.length === 1 ? 'Photo added.' : `${files.length} photos added.`)
+      setCropFile(null)
+      setReplaceImageId(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not add that photo.')
+      setError(err instanceof Error ? err.message : 'Could not save that photo.')
     } finally {
       setUploading(false)
     }
@@ -890,15 +922,32 @@ export default function MyBoardingHouse() {
             ref={fileInputRef}
             type="file"
             accept={IMAGE_ACCEPT}
-            multiple
             className="sr-only"
             onChange={handleUpload}
+          />
+
+          {/* 4:3 crop step — the same ratio as the public Explore cards, so a
+              photo that fills the frame is shown complete on the listing. */}
+          <ImageCropperModal
+            file={cropFile}
+            open={cropFile !== null}
+            busy={uploading}
+            aspect={4 / 3}
+            outputWidth={960}
+            quality={0.82}
+            title={replaceImageId ? 'Replace photo' : 'Crop your photo'}
+            hint={replaceImageId ? 'Position the new photo — it will take this photo\u2019s place.' : undefined}
+            onClose={() => {
+              setCropFile(null)
+              setReplaceImageId(null)
+            }}
+            onApply={applyCroppedImage}
           />
 
           {gallery.length === 0 ? (
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={openAddPhoto}
               disabled={uploading}
               className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 bg-surface px-4 py-10 text-center transition hover:border-brand-300 hover:bg-brand-50/40 disabled:opacity-60"
             >
@@ -959,6 +1008,15 @@ export default function MyBoardingHouse() {
                         )}
                         <button
                           type="button"
+                          onClick={() => handleReplace(image.id)}
+                          disabled={busy}
+                          className="flex items-center gap-1 rounded-lg bg-white/90 px-2.5 py-1.5 text-[11px] font-semibold text-navy-700 transition hover:bg-white disabled:opacity-40"
+                          aria-label={`Replace photo ${index + 1}`}
+                        >
+                          <Repeat size={12} /> Replace
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => removeImage(image.id)}
                           disabled={busy}
                           className="rounded-lg bg-white/90 p-1.5 text-danger transition hover:bg-white disabled:opacity-40"
@@ -973,7 +1031,7 @@ export default function MyBoardingHouse() {
 
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={openAddPhoto}
                   disabled={uploading}
                   className="flex h-40 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 bg-surface text-center transition hover:border-brand-300 hover:bg-brand-50/40 disabled:opacity-60"
                 >

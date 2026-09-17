@@ -316,9 +316,12 @@ export function useReplyAdminMessage() {
 /* -------------------- My Boarding House mutations ------------------ */
 
 /** Invalidating `['landlord-house']` refreshes the console header, sidebar and
- *  the My Boarding House page in one go. */
+ *  the My Boarding House page in one go. `['house']` (prefix match) also
+ *  refreshes every public house-details page so photo changes are visible to
+ *  boarders immediately. */
 function invalidateHouse(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['landlord-house'] })
+  qc.invalidateQueries({ queryKey: ['house'] })
   qc.invalidateQueries({ queryKey: ['houses'] })
   qc.invalidateQueries({ queryKey: ['featured'] })
   qc.invalidateQueries({ queryKey: ['locations'] })
@@ -337,6 +340,15 @@ export function useAddLandlordHouseImages() {
   return useMutation({
     mutationFn: ({ userId, images }: { userId: number | string; images: string[] }) =>
       api.addLandlordHouseImages(userId, images),
+    onSuccess: () => invalidateHouse(qc),
+  })
+}
+
+export function useUpdateLandlordHouseImage() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userId, imageId, image }: { userId: number | string; imageId: string; image: string }) =>
+      api.updateLandlordHouseImage(userId, imageId, image),
     onSuccess: () => invalidateHouse(qc),
   })
 }

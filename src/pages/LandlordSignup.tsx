@@ -17,6 +17,7 @@ import { useState, useRef, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { registerLandlordAPI } from '../lib/api'
+import { ImageCropperModal } from '../components/ImageCropperModal'
 import { cn } from '../lib/utils'
 
 const IMAGE_ACCEPT = 'image/jpeg,image/jpg,image/png,.jpg,.jpeg,.png'
@@ -31,20 +32,38 @@ function isAllowedImage(file: File) {
   return byMime || byExt
 }
 
-function readImageFile(file: File): Promise<UploadFile> {
+function validateImageFile(file: File): string {
+  if (!isAllowedImage(file)) {
+    return 'Please upload a JPG, JPEG, or PNG image.'
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    return 'Each file must be 4 MB or smaller.'
+  }
+  return ''
+}
+
+/** Shrink an already-encoded data URL until it fits the size cap — a safety
+ *  net for the rare crop that still comes out huge. */
+function downscaleDataUrl(dataUrl: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    if (!isAllowedImage(file)) {
-      reject(new Error('Please upload a JPG, JPEG, or PNG image.'))
-      return
+    const img = new Image()
+    img.onerror = () => reject(new Error('Could not process that image.'))
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      const scale = Math.min(1, Math.sqrt(MAX_IMAGE_BYTES / dataUrl.length) * 0.9)
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        reject(new Error('Could not process that image.'))
+        return
+      }
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/jpeg', 0.8))
     }
-    if (file.size > MAX_IMAGE_BYTES) {
-      reject(new Error('Each file must be 4 MB or smaller.'))
-      return
-    }
-    const reader = new FileReader()
-    reader.onload = () => resolve({ name: file.name, url: String(reader.result || '') })
-    reader.onerror = () => reject(new Error('Could not read that file. Please try another image.'))
-    reader.readAsDataURL(file)
+    img.src = dataUrl
   })
 }
 
@@ -174,21 +193,48 @@ export default function LandlordSignup() {
   const [validId, setValidId] = useState<UploadFile | null>(null)
   const [legalDocuments, setLegalDocuments] = useState<UploadFile | null>(null)
 
-  const handleImageUpload = useCallback(async (
+  /** Which document slot the crop modal is working on — null when closed. */
+  const [cropSlot, setCropSlot] = useState<'valid_id' | 'legal_documents' | null>(null)
+  const [cropFile, setCropFile] = useState<File | null>(null)
+  const [cropping, setCropping] = useState(false)
+
+  const handleImageUpload = useCallback((
     e: React.ChangeEvent<HTMLInputElement>,
-    setter: (file: UploadFile) => void,
+    slot: 'valid_id' | 'legal_documents',
   ) => {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    try {
-      const uploaded = await readImageFile(file)
-      setter(uploaded)
-      setError('')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Please upload a valid image file.')
+    const problem = validateImageFile(file)
+    if (problem) {
+      setError(problem)
+      return
     }
+    setError('')
+    setCropSlot(slot)
+    setCropFile(file)
   }, [])
+
+  const applyCroppedDocument = useCallback(async (dataUrl: string) => {
+    const slot = cropSlot
+    if (!slot) return
+    setCropping(true)
+    try {
+      // Downscale anything the browser produced that is still over the 4 MB
+      // cap (rare, but a huge source image zoomed in can get there).
+      const stored = dataUrl.length > MAX_IMAGE_BYTES ? await downscaleDataUrl(dataUrl) : dataUrl
+      const upload: UploadFile = { name: cropFile?.name || (slot === 'valid_id' ? 'Valid ID' : 'Documents'), url: stored }
+      if (slot === 'valid_id') setValidId(upload)
+      else setLegalDocuments(upload)
+      setCropSlot(null)
+      setCropFile(null)
+      setError('')
+    } catch {
+      setError('Could not process that image. Please try another file.')
+    } finally {
+      setCropping(false)
+    }
+  }, [cropSlot, cropFile])
 
   // --- Location ---
 
@@ -649,7 +695,7 @@ export default function LandlordSignup() {
                 type="file"
                 accept={IMAGE_ACCEPT}
                 tabIndex={-1}
-                onChange={(e) => handleImageUpload(e, setValidId)}
+                onChange={(e) => handleImageUpload(e, 'valid_id')}
                 className="sr-only"
               />
               <input
@@ -658,8 +704,28 @@ export default function LandlordSignup() {
                 type="file"
                 accept={IMAGE_ACCEPT}
                 tabIndex={-1}
-                onChange={(e) => handleImageUpload(e, setLegalDocuments)}
+                onChange={(e) => handleImageUpload(e, 'legal_documents')}
                 className="sr-only"
+              />
+
+              {/* Position/zoom step for the chosen document. Contain-fit keeps
+                  the whole document visible — verification staff need every
+                  edge and corner, so nothing may be cropped away. */}
+              <ImageCropperModal
+                file={cropFile}
+                open={cropSlot !== null}
+                busy={cropping}
+                aspect={4 / 3}
+                outputWidth={1200}
+                quality={0.85}
+                fit="contain"
+                title="Position your document"
+                hint="Straighten with zoom & drag — the whole document stays visible."
+                onClose={() => {
+                  setCropSlot(null)
+                  setCropFile(null)
+                }}
+                onApply={applyCroppedDocument}
               />
 
               <div className="space-y-4">
